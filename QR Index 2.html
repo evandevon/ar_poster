@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR AR Test</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  [hidden] { display: none !important; }
+  body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.4; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { margin: 0 0 4px; font-size: 1.4em; }
+  h2 { font-size: 1.1em; margin: 24px 0 8px; }
+  .note { margin: 0 0 8px; opacity: .8; font-size: .95em; }
+  label { display: inline-block; margin: 4px 8px 4px 0; }
+  input[type=url], input[type=text] { width: 100%; box-sizing: border-box; }
+  .form { display: grid; gap: 6px; max-width: 520px; }
+  .form label { display: block; margin: 0; }
+  textarea { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; }
+  fieldset { margin: 12px 0; }
+  fieldset label { display: block; }
+
+  /* Editor preview */
+  #preview { position: relative; height: 380px; overflow: hidden; border: 1px solid #8888;
+    background-color: #fafafa; background-image: linear-gradient(#0001 1px, transparent 1px), linear-gradient(90deg, #0001 1px, transparent 1px);
+    background-size: 20px 20px; }
+  @media (prefers-color-scheme: dark) { #preview { background-color: #222; } }
+  #pvLayer { position: absolute; left: 0; top: 0; width: 100px; height: 100px; transform-origin: 0 0; }
+  .qrbox { position: absolute; left: 0; top: 0; width: 100px; height: 100px; background: #fff center/100% no-repeat;
+    image-rendering: pixelated; outline: 2px dashed #c00; }
+  .qrbox.empty { background: repeating-linear-gradient(45deg, #ddd 0 8px, #fff 8px 16px); display: flex; align-items: center;
+    justify-content: center; text-align: center; font: bold 14px system-ui; color: #c00; }
+  .ar-el { position: absolute; touch-action: none; }
+  #pvLayer .ar-el { cursor: grab; outline: 1px dashed #06c8; }
+  #pvLayer .ar-el > * { pointer-events: none; }
+  .ar-el img, .ar-el video, .ar-el iframe { display: block; border: 0; background: #0003; }
+  .ar-el a { background: #fffd; color: #0645ad; padding: 0 .2em; white-space: nowrap; }
+  .ar-el button { white-space: nowrap; }
+  .yt { position: relative; }
+  .yt::after { content: "▶ YouTube"; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    background: #c00; color: #fff; font: bold 24px system-ui; padding: 6px 14px; border-radius: 8px; }
+
+  #list { padding-left: 20px; }
+  #list li { margin: 10px 0; padding: 8px; border: 1px solid #8884; border-radius: 6px; }
+  #list .nums input { width: 4.5em; }
+  #qrCanvas { display: block; width: 200px; height: 200px; image-rendering: pixelated; margin: 8px 0; border: 1px solid #8884; }
+
+  /* Viewer */
+  #viewer { position: fixed; inset: 0; background: #000; overflow: hidden; }
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #layer { position: absolute; left: 0; top: 0; width: 100px; height: 100px; transform-origin: 0 0; visibility: hidden; transition: opacity .3s; }
+  #layer.lost { opacity: .4; }
+  #hud { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 8px; align-items: center; padding: 8px;
+    background: #000a; color: #fff; z-index: 2; }
+  #status { flex: 1; font-size: 14px; }
+  #startPanel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; color: #fff; text-align: center; padding: 24px; z-index: 3; background: #000; }
+  #startBtn { font-size: 20px; padding: 10px 20px; }
+</style>
+</head>
+<body>
+
+<main id="editor" hidden>
+  <h1>QR AR test</h1>
+  <p class="note">Build a scene around a QR code. Positions and sizes are measured in <b>QR widths</b> from the QR's top-left corner (so x = 1 means "one QR width to the right").</p>
+
+  <h2>1. Add an element</h2>
+  <div class="form">
+    <label>Type
+      <select id="newType">
+        <option value="b">Button</option>
+        <option value="l">Link</option>
+        <option value="i">Image (URL)</option>
+        <option value="y">YouTube video</option>
+        <option value="v">Video file (URL, e.g. .mp4)</option>
+      </select>
+    </label>
+    <label id="newTextWrap">Text <input id="newText" type="text" placeholder="Button or link text"></label>
+    <label>URL <input id="newUrl" type="url" placeholder="https://"></label>
+    <div><button id="addBtn">Add element</button> <button id="sampleBtn">Load sample scene</button> <button id="clearBtn">Clear all</button></div>
+  </div>
+
+  <h2>2. Arrange</h2>
+  <p class="note">Drag elements in the preview, or type exact values below. The red dashed square is the QR code.</p>
+  <div id="preview" aria-label="Scene preview"><div id="pvLayer"></div></div>
+  <label>Preview zoom <input type="range" id="zoom" min="0.15" max="0.8" step="0.05" value="0.55"></label>
+  <ol id="list"></ol>
+
+  <h2>3. Export</h2>
+  <p class="note">Scene link — <span id="linkLen">0</span> characters. Everything is stored in this link; nothing is saved anywhere else.</p>
+  <textarea id="longLink" readonly rows="4" aria-label="Scene link"></textarea>
+  <div><button id="copyBtn">Copy link</button> <a id="testLink" href="#">Open in viewer</a></div>
+
+  <fieldset>
+    <legend>The printed QR code should contain</legend>
+    <label><input type="radio" name="qrsrc" value="long" checked> The scene link itself</label>
+    <label><input type="radio" name="qrsrc" value="own"> My own link (e.g. a Google Slide holding the scene link)</label>
+    <input id="ownLink" type="url" placeholder="https://docs.google.com/presentation/..." hidden>
+  </fieldset>
+  <canvas id="qrCanvas" width="200" height="200" aria-label="QR code"></canvas>
+  <p id="qrInfo" class="note"></p>
+  <a id="qrDownload" download="ar-qr.png" href="#">Download QR (PNG)</a>
+
+  <h2>Scanner</h2>
+  <p class="note">Opens the camera. If it sees a QR containing a scene link, it loads that scene.</p>
+  <a href="#scan">Open scanner</a>
+</main>
+
+<div id="viewer" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <div id="layer"></div>
+  <div id="hud">
+    <span id="status" aria-live="polite">Starting…</span>
+    <button id="holdBtn">Hold</button>
+    <button id="editBtn">Edit</button>
+  </div>
+  <div id="startPanel">
+    <p id="startMsg">Point your camera at the QR code.</p>
+    <button id="startBtn">Start camera</button>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const UNIT = 100; // layer pixels per QR width
+const TYPES = {
+  b: { name: 'Button', text: true, size: 0.25, sizeLabel: 'Text size' },
+  l: { name: 'Link', text: true, size: 0.25, sizeLabel: 'Text size' },
+  i: { name: 'Image', text: false, size: 2, sizeLabel: 'Width' },
+  y: { name: 'YouTube', text: false, size: 3, sizeLabel: 'Width' },
+  v: { name: 'Video file', text: false, size: 3, sizeLabel: 'Width' },
+};
+let scene = [];
+let packed = '';
+
+/* ---------- Encoding: JSON -> deflate -> base64url ---------- */
+const r2 = n => Math.round(n * 100) / 100;
+function ytId(u) {
+  if (!u) return '';
+  if (/^[\w-]{11}$/.test(u)) return u;
+  const m = u.match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([\w-]{11})/);
+  return m ? m[1] : '';
+}
+function toB64url(bytes) {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function fromB64url(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(str);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+async function streamBytes(bytes, transform) {
+  const s = new Blob([bytes]).stream().pipeThrough(transform);
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function pack(sc) {
+  const arr = sc.map(e => {
+    const base = [e.t, r2(e.x), r2(e.y), r2(e.s)];
+    if (e.t === 'b' || e.t === 'l') return [...base, e.txt || '', e.url || ''];
+    if (e.t === 'y') return [...base, ytId(e.url)];
+    return [...base, e.url || ''];
+  });
+  const bytes = new TextEncoder().encode(JSON.stringify([1, arr]));
+  if ('CompressionStream' in window) {
+    try { return 'z' + toB64url(await streamBytes(bytes, new CompressionStream('deflate-raw'))); } catch (e) {}
+  }
+  return 'j' + toB64url(bytes);
+}
+async function unpack(str) {
+  let bytes = fromB64url(str.slice(1));
+  if (str[0] === 'z') bytes = await streamBytes(bytes, new DecompressionStream('deflate-raw'));
+  const [ver, arr] = JSON.parse(new TextDecoder().decode(bytes));
+  if (ver !== 1) throw new Error('Unknown scene version');
+  return arr.map(a => {
+    const e = { t: a[0], x: a[1], y: a[2], s: a[3] };
+    if (e.t === 'b' || e.t === 'l') { e.txt = a[4]; e.url = a[5]; }
+    else if (e.t === 'y') { e.url = 'https://youtu.be/' + a[4]; }
+    else e.url = a[4];
+    return e;
+  });
+}
+
+/* ---------- Building scene elements ---------- */
+function makeEl(e, live) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ar-el';
+  wrap.style.left = e.x * UNIT + 'px';
+  wrap.style.top = e.y * UNIT + 'px';
+  const w = e.s * UNIT + 'px';
+  let el;
+  if (e.t === 'b') {
+    el = document.createElement('button');
+    el.textContent = e.txt || 'Button';
+    el.style.fontSize = w;
+    if (live && e.url) el.onclick = () => window.open(e.url, '_blank', 'noopener');
+  } else if (e.t === 'l') {
+    el = document.createElement('a');
+    el.textContent = e.txt || e.url || 'Link';
+    el.href = e.url || '#';
+    el.target = '_blank'; el.rel = 'noopener';
+    el.style.fontSize = w;
+  } else if (e.t === 'i') {
+    el = document.createElement('img');
+    el.src = e.url; el.alt = ''; el.style.width = w;
+  } else if (e.t === 'y') {
+    const id = ytId(e.url);
+    const h = e.s * UNIT * 9 / 16 + 'px';
+    if (live) {
+      el = document.createElement('iframe');
+      el.src = 'https://www.youtube.com/embed/' + id + '?playsinline=1&rel=0';
+      el.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      el.title = 'YouTube video';
+    } else {
+      el = document.createElement('div');
+      el.className = 'yt';
+      el.style.background = `#000 url(https://img.youtube.com/vi/${id}/hqdefault.jpg) center/cover`;
+    }
+    el.style.width = w; el.style.height = h;
+  } else if (e.t === 'v') {
+    el = document.createElement('video');
+    el.src = e.url; el.controls = true; el.playsInline = true; el.preload = 'metadata';
+    el.style.width = w;
+  }
+  wrap.appendChild(el);
+  return wrap;
+}
+
+/* ---------- Editor ---------- */
+let saveTimer = null;
+function changed(rebuildPreview) {
+  if (rebuildPreview) renderPreview();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(updateExport, 250);
+}
+function snap(n) { return Math.round(n * 20) / 20; }
+
+function renderPreview() {
+  const layer = $('#pvLayer');
+  layer.innerHTML = '';
+  const qb = document.createElement('div');
+  qb.className = 'qrbox';
+  if (previewQR) qb.style.backgroundImage = `url(${previewQR})`;
+  else { qb.classList.add('empty'); qb.textContent = 'QR goes here'; }
+  layer.appendChild(qb);
+  scene.forEach((e, i) => {
+    const wrap = makeEl(e, false);
+    wrap.dataset.i = i;
+    wrap.addEventListener('pointerdown', ev => startDrag(ev, wrap, e, i));
+    layer.appendChild(wrap);
+  });
+  applyZoom();
+}
+function applyZoom() {
+  const z = +$('#zoom').value;
+  $('#pvLayer').style.transform = `translate(40px, 40px) scale(${z})`;
+}
+function startDrag(ev, wrap, e, i) {
+  ev.preventDefault();
+  wrap.setPointerCapture(ev.pointerId);
+  const z = +$('#zoom').value, sx = ev.clientX, sy = ev.clientY, ox = e.x, oy = e.y;
+  const move = m => {
+    e.x = snap(ox + (m.clientX - sx) / (UNIT * z));
+    e.y = snap(oy + (m.clientY - sy) / (UNIT * z));
+    wrap.style.left = e.x * UNIT + 'px';
+    wrap.style.top = e.y * UNIT + 'px';
+    const row = $(`#list li[data-i="${i}"]`);
+    if (row) { row.querySelector('[data-k=x]').value = e.x; row.querySelector('[data-k=y]').value = e.y; }
+  };
+  const up = () => {
+    wrap.removeEventListener('pointermove', move);
+    wrap.removeEventListener('pointerup', up);
+    wrap.removeEventListener('pointercancel', up);
+    changed(false);
+  };
+  wrap.addEventListener('pointermove', move);
+  wrap.addEventListener('pointerup', up);
+  wrap.addEventListener('pointercancel', up);
+}
+
+function renderList() {
+  const ol = $('#list');
+  ol.innerHTML = '';
+  scene.forEach((e, i) => {
+    const T = TYPES[e.t];
+    const li = document.createElement('li');
+    li.dataset.i = i;
+    li.innerHTML = `<b>${T.name}</b>
+      ${T.text ? '<label style="display:block">Text <input type="text" data-k="txt"></label>' : ''}
+      <label style="display:block">URL <input type="url" data-k="url"></label>
+      <div class="nums">
+        <label>x <input type="number" step="0.05" data-k="x"></label>
+        <label>y <input type="number" step="0.05" data-k="y"></label>
+        <label>${T.sizeLabel} <input type="number" step="0.05" min="0.05" data-k="s"></label>
+        <button data-del>Delete</button>
+      </div>`;
+    li.querySelectorAll('input').forEach(inp => {
+      const k = inp.dataset.k;
+      inp.value = e[k] ?? '';
+      inp.addEventListener('input', () => {
+        if (k === 'x' || k === 'y' || k === 's') {
+          const v = parseFloat(inp.value);
+          if (isNaN(v)) return;
+          e[k] = v;
+        } else e[k] = inp.value;
+        changed(true);
+      });
+    });
+    li.querySelector('[data-del]').onclick = () => { scene.splice(i, 1); renderList(); changed(true); };
+    ol.appendChild(li);
+  });
+}
+
+function addElement(e) {
+  scene.push(e);
+  renderList();
+  changed(true);
+}
+function nextY() {
+  return scene.length ? snap(Math.max(...scene.map(e => e.y)) + 0.5) : 0;
+}
+
+/* ---------- QR output ---------- */
+let previewQR = '';
+function buildQR(text) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  return qr;
+}
+function drawQR(canvas, qr, cell, quiet) {
+  const n = qr.getModuleCount();
+  const size = (n + quiet * 2) * cell;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#000';
+  for (let r = 0; r < n; r++)
+    for (let c = 0; c < n; c++)
+      if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+}
+
+async function updateExport() {
+  packed = scene.length ? await pack(scene) : '';
+  const base = location.href.split('#')[0];
+  const link = packed ? base + '#d=' + packed : '';
+  $('#longLink').value = link;
+  $('#linkLen').textContent = link.length;
+  $('#testLink').href = link || '#';
+  history.replaceState(null, '', packed ? '#e=' + packed : location.pathname + location.search);
+
+  const own = document.querySelector('input[name=qrsrc]:checked').value === 'own';
+  const qrText = own ? $('#ownLink').value.trim() : link;
+  const info = $('#qrInfo');
+  const canvas = $('#qrCanvas');
+  if (!qrText) {
+    info.textContent = own ? 'Paste your own link above to make the QR. The layout stays the same — the QR just marks the spot.' : 'Add an element to make a QR.';
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    previewQR = ''; renderPreview();
+    return;
+  }
+  try {
+    const qr = buildQR(qrText);
+    const n = qr.getModuleCount();
+    drawQR(canvas, qr, 10, 4);
+    $('#qrDownload').href = canvas.toDataURL('image/png');
+    const pv = document.createElement('canvas');
+    drawQR(pv, qr, 4, 0);
+    previewQR = pv.toDataURL();
+    const rating = n <= 33 ? 'good for tracking' : n <= 49 ? 'OK — print it at least 4 cm wide' : 'dense — print it large, or use a shorter link';
+    info.textContent = `QR is ${n}×${n} modules: ${rating}.`;
+  } catch (err) {
+    info.textContent = 'Too much data for one QR code. Use "My own link" instead.';
+    previewQR = '';
+  }
+  renderPreview();
+}
+
+function initEditor() {
+  const typeSel = $('#newType');
+  const syncForm = () => { $('#newTextWrap').hidden = !TYPES[typeSel.value].text; };
+  typeSel.onchange = syncForm; syncForm();
+  $('#addBtn').onclick = () => {
+    const t = typeSel.value;
+    const url = $('#newUrl').value.trim();
+    if (t === 'y' && !ytId(url)) { alert("That doesn't look like a YouTube link."); return; }
+    if (!url && t !== 'b') { alert('Please enter a URL.'); return; }
+    addElement({ t, x: 1.2, y: nextY(), s: TYPES[t].size, txt: $('#newText').value.trim(), url });
+    $('#newText').value = ''; $('#newUrl').value = '';
+  };
+  $('#sampleBtn').onclick = () => {
+    scene = [
+      { t: 'b', x: 1.2, y: 0, s: 0.25, txt: 'Visit NASA', url: 'https://www.nasa.gov' },
+      { t: 'l', x: 1.2, y: 0.55, s: 0.2, txt: 'Wikipedia: Augmented reality', url: 'https://en.wikipedia.org/wiki/Augmented_reality' },
+      { t: 'i', x: 0, y: 1.3, s: 2, url: 'https://picsum.photos/id/1025/400/300' },
+      { t: 'y', x: 2.2, y: 1.3, s: 2.5, url: 'https://youtu.be/aqz-KE-bpKQ' },
+    ];
+    renderList(); changed(true);
+  };
+  $('#clearBtn').onclick = () => { if (confirm('Remove all elements?')) { scene = []; renderList(); changed(true); } };
+  $('#zoom').oninput = applyZoom;
+  $('#copyBtn').onclick = async () => {
+    try { await navigator.clipboard.writeText($('#longLink').value); $('#copyBtn').textContent = 'Copied!'; }
+    catch (e) { $('#longLink').select(); $('#copyBtn').textContent = 'Select & copy manually'; }
+    setTimeout(() => $('#copyBtn').textContent = 'Copy link', 1500);
+  };
+  document.querySelectorAll('input[name=qrsrc]').forEach(r => r.onchange = () => {
+    $('#ownLink').hidden = document.querySelector('input[name=qrsrc]:checked').value !== 'own';
+    updateExport();
+  });
+  $('#ownLink').oninput = () => changed(false);
+}
+
+/* ---------- Viewer: QR tracking + homography ---------- */
+let stream = null, running = false, held = false, lastSeen = 0, pose = null;
+const work = document.createElement('canvas');
+const wctx = work.getContext('2d', { willReadFrequently: true });
+const SQUARE = [{ x: 0, y: 0 }, { x: UNIT, y: 0 }, { x: UNIT, y: UNIT }, { x: 0, y: UNIT }];
+
+function solve(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-10) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+function homography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = src[i], { x: u, y: v } = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  return solve(A, b);
+}
+function toCss(h) {
+  return `matrix3d(${h[0]},${h[3]},0,${h[6]},${h[1]},${h[4]},0,${h[7]},0,0,1,0,${h[2]},${h[5]},0,1)`;
+}
+
+function videoToScreen(p, vw, vh) {
+  const W = innerWidth, H = innerHeight;
+  const s = Math.max(W / vw, H / vh);
+  return { x: p.x * s + (W - vw * s) / 2, y: p.y * s + (H - vh * s) / 2 };
+}
+
+function buildLayer() {
+  const layer = $('#layer');
+  layer.innerHTML = '';
+  (scene || []).forEach(e => layer.appendChild(makeEl(e, true)));
+}
+
+function tick() {
+  if (!running) return;
+  const video = $('#cam');
+  const now = performance.now();
+  if (!held && video.readyState >= 2 && video.videoWidth) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const sc = Math.min(1, 720 / Math.max(vw, vh));
+    const cw = Math.round(vw * sc), ch = Math.round(vh * sc);
+    if (work.width !== cw || work.height !== ch) { work.width = cw; work.height = ch; }
+    wctx.drawImage(video, 0, 0, cw, ch);
+    const code = jsQR(wctx.getImageData(0, 0, cw, ch).data, cw, ch, { inversionAttempts: 'dontInvert' });
+    if (code) {
+      if (!scene && /#[de]=/.test(code.data)) {
+        const data = code.data.split(/#[de]=/)[1];
+        scene = 'loading';
+        unpack(data).then(sc2 => { scene = sc2; packed = data; buildLayer(); })
+          .catch(() => { scene = null; setStatus("Found a scene link, but couldn't read it."); });
+      }
+      const L = code.location;
+      const pts = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner]
+        .map(p => videoToScreen({ x: p.x / sc, y: p.y / sc }, vw, vh));
+      if (pose) {
+        const jump = Math.hypot(pts[0].x - pose[0].x, pts[0].y - pose[0].y);
+        const a = jump > 60 ? 1 : 0.5; // follow big moves instantly, smooth small jitter
+        pose = pose.map((p, i) => ({ x: p.x + (pts[i].x - p.x) * a, y: p.y + (pts[i].y - p.y) * a }));
+      } else pose = pts;
+      const h = homography(SQUARE, pose);
+      if (h) {
+        const layer = $('#layer');
+        layer.style.transform = toCss(h);
+        layer.style.visibility = 'visible';
+      }
+      lastSeen = now;
+    }
+  }
+  const layer = $('#layer');
+  if (held) setStatus('Holding position — tap Resume to track again.');
+  else if (!lastSeen) setStatus(scene ? 'Looking for the QR code…' : 'Point at a QR code containing a scene link.');
+  else if (now - lastSeen > 700) { layer.classList.add('lost'); setStatus('QR lost — showing last position.'); }
+  else { layer.classList.remove('lost'); setStatus(Array.isArray(scene) ? 'Tracking' : 'QR found (no scene in it).'); }
+  requestAnimationFrame(tick);
+}
+let lastStatus = '';
+function setStatus(t) { if (t !== lastStatus) { $('#status').textContent = t; lastStatus = t; } }
+
+async function startCamera() {
+  const btn = $('#startBtn');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    $('#startMsg').textContent = "This browser can't use the camera here. If you opened this from inside another app (e.g. Google Slides), use its menu to 'Open in browser' (Safari or Chrome), and make sure the address starts with https://";
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Starting…';
+  $('#startMsg').textContent = 'Allow camera access if your phone asks.';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false,
+    });
+  } catch (err) {
+    $('#startMsg').textContent = 'Camera unavailable (' + (err.name || err.message) + '). Check that camera access is allowed for this site in your browser settings, then tap Start camera again.';
+    btn.disabled = false; btn.textContent = 'Start camera';
+    return;
+  }
+  const video = $('#cam');
+  video.srcObject = stream;
+  video.play().catch(() => {});
+  $('#startPanel').hidden = true;
+  btn.disabled = false; btn.textContent = 'Start camera';
+  running = true; lastSeen = 0; pose = null;
+  requestAnimationFrame(tick);
+}
+function stopCamera() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+function initViewer() {
+  $('#startBtn').onclick = startCamera;
+  $('#holdBtn').onclick = () => {
+    held = !held;
+    $('#holdBtn').textContent = held ? 'Resume' : 'Hold';
+    if (held) $('#layer').classList.remove('lost');
+  };
+  $('#editBtn').onclick = async () => {
+    if (Array.isArray(scene) && scene.length && !packed) packed = await pack(scene);
+    location.hash = packed ? '#e=' + packed : '';
+  };
+}
+
+/* ---------- Routing ---------- */
+async function route() {
+  stopCamera();
+  const h = location.hash;
+  if (h.startsWith('#d=') || h === '#scan') {
+    $('#editor').hidden = true; $('#viewer').hidden = false;
+    document.body.style.overflow = 'hidden';
+    scene = null; packed = '';
+    if (h.startsWith('#d=')) {
+      try { packed = h.slice(3); scene = await unpack(packed); }
+      catch (e) { $('#startMsg').textContent = "This scene link couldn't be read — it may be incomplete."; }
+    }
+    held = false; $('#holdBtn').textContent = 'Hold';
+    $('#layer').style.visibility = 'hidden';
+    $('#startPanel').hidden = false;
+    buildLayer();
+  } else {
+    $('#viewer').hidden = true; $('#editor').hidden = false;
+    document.body.style.overflow = '';
+    scene = [];
+    if (h.startsWith('#e=')) {
+      try { scene = await unpack(h.slice(3)); } catch (e) { alert("That scene link couldn't be read."); }
+    }
+    renderList();
+    updateExport();
+  }
+}
+
+initEditor();
+initViewer();
+addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>
