@@ -1,0 +1,1545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poster AR</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  [hidden] { display: none !important; }
+  body { margin: 0; font-family: system-ui, sans-serif; line-height: 1.4; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px; }
+  h1 { margin: 0 0 4px; font-size: 1.4em; }
+  h2 { font-size: 1.1em; margin: 24px 0 8px; }
+  .note { margin: 0 0 8px; opacity: .8; font-size: .95em; }
+  label { display: inline-block; margin: 4px 8px 4px 0; }
+  input[type=url], input[type=text] { width: 100%; box-sizing: border-box; }
+  .form { display: grid; gap: 6px; max-width: 520px; }
+  .form label { display: block; margin: 0; }
+  textarea { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; }
+  fieldset { margin: 12px 0; }
+  fieldset label { display: block; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+
+  /* Editor preview */
+  #preview { position: relative; height: min(70vh, 640px); overflow: hidden; border: 1px solid #8888; touch-action: none;
+    background-color: #e9e9e9; background-image: linear-gradient(#0001 1px, transparent 1px), linear-gradient(90deg, #0001 1px, transparent 1px);
+    background-size: 20px 20px; }
+  @media (prefers-color-scheme: dark) { #preview { background-color: #2a2a2a; } }
+  #pvLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #pvPoster { position: absolute; display: block; box-shadow: 0 1px 6px #0004; }
+  #preview.posterMode #pvPoster { cursor: move; }
+  #preview.posterMode .ar-el { pointer-events: none; opacity: .5; }
+  .ar-el { position: absolute; touch-action: none; }
+  #pvLayer .ar-el { cursor: grab; outline: 2px dashed #06c8; }
+  #pvLayer .ar-el > * { pointer-events: none; }
+  .ar-el img { display: block; border: 0; }
+  .ar-el video, .ar-el iframe { display: block; border: 0; background: #0003; }
+  .ar-el audio { display: block; }
+  .ar-el .unmute { position: absolute; left: 4%; top: 4%; z-index: 1; }
+  .drive { display: flex; align-items: center; justify-content: center; background: #e8eaed center/cover; color: #1a73e8; }
+  .ar-el a { background: #fffd; color: #0645ad; padding: 0 .2em; white-space: nowrap; }
+  .ar-el button { white-space: nowrap; }
+  .yt { position: relative; }
+  .yt::after { content: "▶ YouTube"; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    background: #c00; color: #fff; font: bold 40px system-ui; padding: 8px 20px; border-radius: 12px; }
+
+  #list { padding-left: 20px; }
+  #list li { margin: 10px 0; padding: 8px; border: 1px solid #8884; border-radius: 6px; }
+  #list .nums input { width: 5.5em; }
+
+  /* Viewer */
+  #viewer { position: fixed; inset: 0; background: #000; overflow: hidden; }
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; visibility: hidden; transition: opacity .3s; }
+  #layer.lost { opacity: .4; }
+  #hud { position: absolute; left: 0; right: 0; top: 0; display: flex; gap: 8px; align-items: center; padding: 8px;
+    background: #000a; color: #fff; z-index: 2; }
+  #status { flex: 1; font-size: 14px; }
+  #startPanel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; color: #fff; text-align: center; padding: 24px; z-index: 3; background: #000; }
+  #startBtn { font-size: 20px; padding: 10px 20px; }
+</style>
+</head>
+<body>
+
+<main id="editor" hidden>
+  <h1>Poster AR</h1>
+  <p class="note">Make a poster that comes alive through a phone camera. The black frame (with the QR code in its bottom-left corner) is what the camera follows. Everything you add is stored in the link; nothing is uploaded anywhere.</p>
+
+  <h2>1. Poster</h2>
+  <div class="row">
+    <label>Shape <select id="shape"></select></label>
+    <label>Poster image <input type="file" id="posterFile" accept="image/*"></label>
+  </div>
+  <div class="row" id="posterCtl">
+    <label><input type="checkbox" id="movePoster"> Move the poster image (drag it in the preview)</label>
+    <label>Size <input type="range" id="posterScale" min="0.3" max="3" step="0.01" value="1"></label>
+    <button id="fillBtn">Fill frame</button> <button id="fitBtn">Fit whole image</button> <button id="removePoster">Remove image</button>
+  </div>
+  <p class="note">Your image is only used on this device, to print the poster and to help you place things. It isn't put in the link. Keep the bottom-left corner free of anything important: the QR code goes there.</p>
+
+  <h2>2. Add things to the poster</h2>
+  <div class="form">
+    <label>Type
+      <select id="newType">
+        <option value="b">Button</option>
+        <option value="l">Link</option>
+        <option value="i">Image (URL)</option>
+        <option value="y">YouTube video</option>
+        <option value="v">Video file (URL, e.g. .mp4)</option>
+        <option value="a">Audio file (URL, e.g. .mp3)</option>
+        <option value="g">Google Drive video or audio</option>
+      </select>
+    </label>
+    <label id="newTextWrap">Text <input id="newText" type="text" placeholder="Button or link text"></label>
+    <label>URL <input id="newUrl" type="url" placeholder="https://"></label>
+    <div><button id="addBtn">Add</button> <button id="sampleBtn">Load sample</button> <button id="clearBtn">Clear all</button></div>
+  </div>
+
+  <h2>3. Arrange</h2>
+  <p class="note">Drag things in the preview, or type exact values below (x, y and size are fractions of the poster's width). Things can sit outside the frame too.</p>
+  <div id="preview" aria-label="Poster preview"><div id="pvLayer"><canvas id="pvPoster"></canvas></div></div>
+  <label>Zoom <input type="range" id="zoom" min="0.4" max="1.6" step="0.05" value="1"></label>
+  <ol id="list"></ol>
+
+  <h2>4. Link and QR code</h2>
+  <p class="note">Scene link — <span id="linkLen">0</span> characters.</p>
+  <textarea id="longLink" readonly rows="3" aria-label="Scene link"></textarea>
+  <div><button id="copyBtn">Copy link</button> <a id="testLink" href="#">Open in viewer</a></div>
+  <fieldset>
+    <legend>The QR code on the poster should contain</legend>
+    <label><input type="radio" name="qrsrc" value="long" checked> The scene link itself (changes whenever you edit, so reprint after changes)</label>
+    <label><input type="radio" name="qrsrc" value="own"> My own link, e.g. a Google Slide holding the scene link (print once, then just update the Slide)</label>
+    <input id="ownLink" type="url" placeholder="https://docs.google.com/presentation/..." hidden>
+  </fieldset>
+  <p id="qrInfo" class="note"></p>
+
+  <h2>5. Print</h2>
+  <div class="row">
+    <button id="dlPoster">Download printable poster (PNG)</button>
+    <button id="dlFrame">Download frame only (PNG, see-through middle, for Canva)</button>
+  </div>
+  <p class="note">Print at the chosen shape (e.g. A4) without "fit to page" cropping. Keep the white edge around the black frame, and display it on a flat surface.</p>
+
+  <h2>Scanner</h2>
+  <p class="note">Opens the camera. If it sees a QR code containing a scene link, it loads that scene.</p>
+  <a href="#scan">Open scanner</a>
+</main>
+
+<div id="viewer" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <div id="layer"></div>
+  <div id="hud">
+    <span id="status" aria-live="polite">Starting…</span>
+    <button id="holdBtn">Hold</button>
+    <button id="camBtn" title="Switch camera">🔄 Camera</button>
+    <button id="editBtn">Edit</button>
+  </div>
+  <div id="startPanel">
+    <p id="startMsg">Point your camera at the poster.</p>
+    <button id="startBtn">Start camera</button>
+    <button id="otherCamBtn" hidden>Try another camera</button>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const UNIT = 1000; // layer pixels per poster-frame width
+
+/* ---------- Poster shapes and frame geometry (all in frame widths) ---------- */
+const SHAPES = [
+  { name: 'A4 portrait', r: 210 / 297, mm: 210 },
+  { name: 'A4 landscape', r: 297 / 210, mm: 297 },
+  { name: 'Square', r: 1, mm: 200 },
+  { name: '16:9 landscape (slide / screen)', r: 16 / 9, mm: 297 },
+  { name: '9:16 portrait (phone / story)', r: 9 / 16, mm: 167 },
+];
+let shapeIdx = 0;
+// r = width / height. Frame outer box is 1 wide and Hf tall. The QR sits in a white
+// cut-out in the bottom-left corner of the frame, which also shows which way is up.
+// The printed page has exactly the chosen shape; the frame is inset from the page edge by a white margin.
+function geo(i = shapeIdx) {
+  const r = SHAPES[i].r, Ph = 1 / r, Mp = 0.04 * Math.min(1, Ph);   // page is 1 wide, Ph tall; margin Mp
+  const Fw = 1 - 2 * Mp, Hf = (Ph - 2 * Mp) / Fw, M = Mp / Fw;     // now in frame widths
+  const m = Math.min(1, Hf);
+  const T = 0.035 * m, G = 0.012 * m, C = 0.2 * m, q = 0.02 * m;
+  return { r, Hf, m, T, G, C, q, M, A: { x: T + G, y: T + G, w: 1 - 2 * (T + G), h: Hf - 2 * (T + G) },
+    qr: { x: q, y: Hf - C + q, s: C - 2 * q } };
+}
+
+const TYPES = {
+  b: { name: 'Button', text: true, size: 0.035, sizeLabel: 'Text size' },
+  l: { name: 'Link', text: true, size: 0.03, sizeLabel: 'Text size' },
+  i: { name: 'Image', text: false, size: 0.3, sizeLabel: 'Width' },
+  y: { name: 'YouTube', text: false, size: 0.5, sizeLabel: 'Width', opts: ['open', 'audio', 'auto'] },
+  v: { name: 'Video file', text: false, size: 0.5, sizeLabel: 'Width', opts: ['auto'] },
+  a: { name: 'Audio file', text: false, size: 0.4, sizeLabel: 'Width', opts: ['auto'] },
+  g: { name: 'Google Drive video/audio', text: false, size: 0.5, sizeLabel: 'Width', opts: ['open'] },
+};
+const AUTO = 1, OPEN = 2, AUDIO = 4;
+const OPTS = {
+  open: { bit: OPEN, label: 'Open in a new tab instead of playing in the AR scene' },
+  audio: { bit: AUDIO, label: 'Audio only: hide the picture and show a play/pause button (YouTube\'s rules ask for the player to stay visible)' },
+  auto: { bit: AUTO, label: 'Autoplay when the poster is found (may start muted, with a "Tap for sound" button)' },
+};
+let scene = [];
+let packed = '';
+
+/* ---------- Encoding: JSON -> deflate -> base64url ---------- */
+const k3 = n => Math.round(n * 1000);      // store positions in thousandths of the frame width
+function ytId(u) {
+  if (!u) return '';
+  if (/^[\w-]{11}$/.test(u)) return u;
+  const m = u.match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([\w-]{11})/);
+  return m ? m[1] : '';
+}
+function driveId(u) {
+  if (!u) return '';
+  if (/^[\w-]{25,}$/.test(u)) return u;
+  const m = u.match(/\/d\/([\w-]{20,})|[?&]id=([\w-]{20,})/);
+  return m ? (m[1] || m[2]) : '';
+}
+function toB64url(bytes) {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function fromB64url(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(str);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+async function streamBytes(bytes, transform) {
+  const s = new Blob([bytes]).stream().pipeThrough(transform);
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function pack(sc) {
+  const arr = sc.map(e => {
+    const base = [e.t, k3(e.x), k3(e.y), k3(e.s)];
+    if (e.t === 'b' || e.t === 'l') return [...base, e.txt || '', e.url || ''];
+    const f = e.f ? [e.f] : [];
+    if (e.t === 'y') return [...base, ytId(e.url), ...f];
+    if (e.t === 'g') return [...base, driveId(e.url), ...f];
+    return [...base, e.url || '', ...f];
+  });
+  const bytes = new TextEncoder().encode(JSON.stringify([2, shapeIdx, arr]));
+  if ('CompressionStream' in window) {
+    try { return 'z' + toB64url(await streamBytes(bytes, new CompressionStream('deflate-raw'))); } catch (e) {}
+  }
+  return 'j' + toB64url(bytes);
+}
+// Returns { shape, els }.
+async function unpack(str) {
+  let bytes = fromB64url(str.slice(1));
+  if (str[0] === 'z') bytes = await streamBytes(bytes, new DecompressionStream('deflate-raw'));
+  const [ver, shape, arr] = JSON.parse(new TextDecoder().decode(bytes));
+  if (ver !== 2) throw new Error('This link was made with an older version of the tool.');
+  const els = arr.map(a => {
+    const e = { t: a[0], x: a[1] / 1000, y: a[2] / 1000, s: a[3] / 1000 };
+    if (e.t === 'b' || e.t === 'l') { e.txt = a[4]; e.url = a[5]; }
+    else if (e.t === 'y') { e.url = 'https://youtu.be/' + a[4]; e.f = a[5] | 0; }
+    else if (e.t === 'g') { e.url = 'https://drive.google.com/file/d/' + a[4] + '/view'; e.f = a[5] | 0; }
+    else { e.url = a[4]; e.f = a[5] | 0; }
+    return e;
+  });
+  return { shape: SHAPES[shape] ? shape : 0, els };
+}
+
+/* ---------- Building scene elements ---------- */
+function makeEl(e, live) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ar-el';
+  wrap.style.left = e.x * UNIT + 'px';
+  wrap.style.top = e.y * UNIT + 'px';
+  const w = e.s * UNIT + 'px';
+  let el;
+  if (e.t === 'b') {
+    el = document.createElement('button');
+    el.textContent = e.txt || 'Button';
+    el.style.fontSize = w;
+    if (live && e.url) el.onclick = () => window.open(e.url, '_blank', 'noopener');
+  } else if (e.t === 'l') {
+    el = document.createElement('a');
+    el.textContent = e.txt || e.url || 'Link';
+    el.href = e.url || '#';
+    el.target = '_blank'; el.rel = 'noopener';
+    el.style.fontSize = w;
+  } else if (e.t === 'i') {
+    el = document.createElement('img');
+    el.src = e.url; el.alt = ''; el.style.width = w;
+  } else if (e.t === 'y') {
+    const id = ytId(e.url);
+    const h = e.s * UNIT * 9 / 16 + 'px';
+    const thumb = () => {
+      const d = document.createElement('div');
+      d.className = 'yt';
+      d.style.background = `#000 url(https://img.youtube.com/vi/${id}/hqdefault.jpg) center/cover`;
+      d.style.width = w; d.style.height = h;
+      return d;
+    };
+    if (!(e.f & OPEN) && (e.f & AUDIO)) {
+      el = document.createElement('button');
+      el.textContent = '▶ Play audio';
+      el.style.fontSize = e.s * UNIT / 10 + 'px';
+      if (live) ytQueue.push({ btn: el, wrap, id, hidden: true, auto: !!(e.f & AUTO) });
+    } else if (e.f & OPEN) {
+      el = document.createElement('a');
+      el.href = 'https://www.youtube.com/watch?v=' + id;
+      el.target = '_blank'; el.rel = 'noopener';
+      el.style.padding = '0';
+      el.appendChild(thumb());
+    } else {
+      el = thumb();
+      // In the viewer this placeholder is swapped for a YouTube player (see setupYouTube).
+      if (live) ytQueue.push({ div: el, wrap, id, w: e.s * UNIT, h: e.s * UNIT * 9 / 16, auto: !!(e.f & AUTO) });
+    }
+  } else if (e.t === 'v' || e.t === 'a') {
+    el = document.createElement(e.t === 'v' ? 'video' : 'audio');
+    el.src = e.url; el.controls = true; el.playsInline = true; el.preload = 'metadata';
+    el.style.width = w;
+    if (live && (e.f & AUTO)) el.dataset.auto = '1';
+  } else if (e.t === 'g') {
+    const id = driveId(e.url);
+    const h = e.s * UNIT * 9 / 16 + 'px';
+    if (live && !(e.f & OPEN)) {
+      el = document.createElement('iframe');
+      el.src = 'https://drive.google.com/file/d/' + id + '/preview';
+      el.allow = 'autoplay; fullscreen';
+      el.title = 'Google Drive file';
+    } else {
+      el = document.createElement('a');
+      el.className = 'drive';
+      el.href = 'https://drive.google.com/file/d/' + id + '/view';
+      el.target = '_blank'; el.rel = 'noopener';
+      el.style.backgroundImage = `url(https://drive.google.com/thumbnail?id=${id})`;
+      el.style.fontSize = e.s * UNIT / 12 + 'px';
+      el.textContent = (e.f & OPEN) ? '▶ Open in Google Drive' : '▶ Google Drive player';
+    }
+    el.style.width = w; el.style.height = h;
+  }
+  wrap.appendChild(el);
+  return wrap;
+}
+
+/* ---------- Poster image (kept on this device only) ---------- */
+const poster = { img: null, scale: 1, ox: 0, oy: 0 };
+function posterRect(g) {
+  const iw = poster.img.naturalWidth, ih = poster.img.naturalHeight;
+  const base = Math.max(g.A.w / iw, g.A.h / ih);
+  const s = base * poster.scale, w = iw * s, h = ih * s;
+  return { x: g.A.x + (g.A.w - w) / 2 + poster.ox, y: g.A.y + (g.A.h - h) / 2 + poster.oy, w, h };
+}
+function savePosterLocal() {
+  try {
+    if (!poster.img) { localStorage.removeItem('arPoster'); return; }
+    const c = document.createElement('canvas'), k = Math.min(1, 1400 / Math.max(poster.img.naturalWidth, poster.img.naturalHeight));
+    c.width = Math.round(poster.img.naturalWidth * k); c.height = Math.round(poster.img.naturalHeight * k);
+    c.getContext('2d').drawImage(poster.img, 0, 0, c.width, c.height);
+    localStorage.setItem('arPoster', JSON.stringify({ src: c.toDataURL('image/jpeg', 0.85), scale: poster.scale, ox: poster.ox, oy: poster.oy, shape: shapeIdx }));
+  } catch (e) {}
+}
+function loadPosterLocal() {
+  try {
+    const d = JSON.parse(localStorage.getItem('arPoster') || 'null');
+    if (!d) return;
+    const img = new Image();
+    img.onload = () => { poster.img = img; Object.assign(poster, { scale: d.scale, ox: d.ox, oy: d.oy }); $('#posterScale').value = d.scale; drawPreviewPoster(); };
+    img.src = d.src;
+  } catch (e) {}
+}
+
+/* ---------- Drawing the printable poster ---------- */
+let qrObj = null; // current QR code (qrcode-generator object) or null
+function buildQR(text) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  return qr;
+}
+// Draws the poster (white edge, artwork, black frame, QR) at pxW pixels wide.
+// opts.seeThrough: leave the artwork area transparent (frame-only download).
+function drawPoster(canvas, pxW, opts = {}) {
+  const g = geo();
+  const k = pxW / (1 + 2 * g.M);
+  canvas.width = Math.round(pxW); canvas.height = Math.round((g.Hf + 2 * g.M) * k);
+  const ctx = canvas.getContext('2d');
+  const X = u => (u + g.M) * k, Y = v => (v + g.M) * k;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (opts.seeThrough) ctx.clearRect(X(g.A.x), Y(g.A.y), g.A.w * k, g.A.h * k);
+  else if (poster.img) {
+    ctx.save(); ctx.beginPath(); ctx.rect(X(g.A.x), Y(g.A.y), g.A.w * k, g.A.h * k); ctx.clip();
+    const p = posterRect(g);
+    ctx.drawImage(poster.img, X(p.x), Y(p.y), p.w * k, p.h * k);
+    ctx.restore();
+  }
+  // Frame: top, right, bottom (starts after the QR corner), left (stops before it).
+  ctx.fillStyle = '#000';
+  ctx.fillRect(X(0), Y(0), k, g.T * k);
+  ctx.fillRect(X(1 - g.T), Y(0), g.T * k, g.Hf * k);
+  ctx.fillRect(X(g.C), Y(g.Hf - g.T), (1 - g.C) * k, g.T * k);
+  ctx.fillRect(X(0), Y(0), g.T * k, (g.Hf - g.C) * k);
+  // The QR corner: white square, QR inside it.
+  ctx.fillStyle = '#fff'; ctx.fillRect(X(0), Y(g.Hf - g.C), g.C * k, g.C * k);
+  const qx = X(g.qr.x), qy = Y(g.qr.y), qs = g.qr.s * k;
+  if (qrObj) {
+    const n = qrObj.getModuleCount(), cell = qs / n;
+    ctx.fillStyle = '#000';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+      if (!qrObj.isDark(r, c)) continue;
+      const x0 = Math.round(qx + c * cell), x1 = Math.round(qx + (c + 1) * cell);
+      const y0 = Math.round(qy + r * cell), y1 = Math.round(qy + (r + 1) * cell);
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+  } else {
+    ctx.fillStyle = '#ddd'; ctx.fillRect(qx, qy, qs, qs);
+    ctx.fillStyle = '#c00'; ctx.font = `bold ${Math.round(qs / 6)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('QR', qx + qs / 2, qy + qs / 2);
+  }
+  return k;
+}
+
+/* ---------- Editor ---------- */
+let saveTimer = null, pvZ = 1, pvTx = 0, pvTy = 0;
+function changed(rebuildPreview) {
+  if (rebuildPreview) renderPreview();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(updateExport, 250);
+}
+function snap(n) { return Math.round(n * 200) / 200; }
+
+function drawPreviewPoster() {
+  const g = geo(), cv = $('#pvPoster');
+  drawPoster(cv, UNIT * (1 + 2 * g.M));
+  Object.assign(cv.style, { left: -g.M * UNIT + 'px', top: -g.M * UNIT + 'px', width: UNIT * (1 + 2 * g.M) + 'px', height: UNIT * (g.Hf + 2 * g.M) + 'px' });
+}
+function renderPreview() {
+  const layer = $('#pvLayer');
+  layer.querySelectorAll('.ar-el').forEach(n => n.remove());
+  scene.forEach((e, i) => {
+    const wrap = makeEl(e, false);
+    wrap.dataset.i = i;
+    wrap.addEventListener('pointerdown', ev => startDrag(ev, wrap, e, i));
+    layer.appendChild(wrap);
+  });
+  applyZoom();
+}
+function applyZoom() {
+  const g = geo(), pv = $('#preview');
+  const W = pv.clientWidth, H = pv.clientHeight;
+  const fit = Math.min((W - 40) / (UNIT * (1 + 2 * g.M)), (H - 40) / (UNIT * (g.Hf + 2 * g.M)));
+  pvZ = fit * +$('#zoom').value;
+  pvTx = (W - UNIT * pvZ) / 2; pvTy = (H - UNIT * g.Hf * pvZ) / 2;
+  $('#pvLayer').style.transform = `translate(${pvTx}px, ${pvTy}px) scale(${pvZ})`;
+}
+function startDrag(ev, wrap, e, i) {
+  ev.preventDefault(); ev.stopPropagation();
+  wrap.setPointerCapture(ev.pointerId);
+  const sx = ev.clientX, sy = ev.clientY, ox = e.x, oy = e.y;
+  const move = m => {
+    e.x = snap(ox + (m.clientX - sx) / (UNIT * pvZ));
+    e.y = snap(oy + (m.clientY - sy) / (UNIT * pvZ));
+    wrap.style.left = e.x * UNIT + 'px';
+    wrap.style.top = e.y * UNIT + 'px';
+    const row = $(`#list li[data-i="${i}"]`);
+    if (row) { row.querySelector('[data-k=x]').value = e.x; row.querySelector('[data-k=y]').value = e.y; }
+  };
+  const up = () => {
+    wrap.removeEventListener('pointermove', move);
+    wrap.removeEventListener('pointerup', up);
+    wrap.removeEventListener('pointercancel', up);
+    changed(false);
+  };
+  wrap.addEventListener('pointermove', move);
+  wrap.addEventListener('pointerup', up);
+  wrap.addEventListener('pointercancel', up);
+}
+// Dragging the poster image itself (when "Move the poster image" is ticked).
+function startPosterDrag(ev) {
+  if (!$('#movePoster').checked || !poster.img) return;
+  ev.preventDefault();
+  const pv = $('#preview');
+  pv.setPointerCapture(ev.pointerId);
+  const sx = ev.clientX, sy = ev.clientY, ox = poster.ox, oy = poster.oy;
+  const move = m => { poster.ox = ox + (m.clientX - sx) / (UNIT * pvZ); poster.oy = oy + (m.clientY - sy) / (UNIT * pvZ); drawPreviewPoster(); };
+  const up = () => { pv.removeEventListener('pointermove', move); pv.removeEventListener('pointerup', up); pv.removeEventListener('pointercancel', up); savePosterLocal(); };
+  pv.addEventListener('pointermove', move); pv.addEventListener('pointerup', up); pv.addEventListener('pointercancel', up);
+}
+
+function renderList() {
+  const ol = $('#list');
+  ol.innerHTML = '';
+  scene.forEach((e, i) => {
+    const T = TYPES[e.t];
+    const li = document.createElement('li');
+    li.dataset.i = i;
+    li.innerHTML = `<b>${T.name}</b>
+      ${T.text ? '<label style="display:block">Text <input type="text" data-k="txt"></label>' : ''}
+      <label style="display:block">URL <input type="url" data-k="url"></label>
+      <div class="nums">
+        <label>x <input type="number" step="0.005" data-k="x"></label>
+        <label>y <input type="number" step="0.005" data-k="y"></label>
+        <label>${T.sizeLabel} <input type="number" step="0.005" min="0.005" data-k="s"></label>
+        <button data-del>Delete</button>
+      </div>
+      ${(T.opts || []).map(o => `<label style="display:block"><input type="checkbox" data-opt="${o}"> ${OPTS[o].label}</label>`).join('')}`;
+    li.querySelectorAll('input[data-opt]').forEach(cb => {
+      const bit = OPTS[cb.dataset.opt].bit;
+      cb.checked = !!((e.f || 0) & bit);
+      cb.onchange = () => { e.f = cb.checked ? (e.f || 0) | bit : (e.f || 0) & ~bit; changed(true); };
+    });
+    li.querySelectorAll('input[data-k]').forEach(inp => {
+      const k = inp.dataset.k;
+      inp.value = e[k] ?? '';
+      inp.addEventListener('input', () => {
+        if (k === 'x' || k === 'y' || k === 's') {
+          const v = parseFloat(inp.value);
+          if (isNaN(v)) return;
+          e[k] = v;
+        } else e[k] = inp.value;
+        changed(true);
+      });
+    });
+    li.querySelector('[data-del]').onclick = () => { scene.splice(i, 1); renderList(); changed(true); };
+    ol.appendChild(li);
+  });
+}
+
+function addElement(e) {
+  scene.push(e);
+  renderList();
+  changed(true);
+}
+function nextY() {
+  const h = e => (e.t === 'b' || e.t === 'l') ? e.s * 1.6 : e.t === 'a' ? 0.06 : (e.t === 'y' && (e.f & AUDIO)) ? e.s * 0.2 : e.s * 0.6;
+  return scene.length ? snap(Math.max(...scene.map(e => e.y + h(e))) + 0.02) : 0.08;
+}
+
+async function updateExport() {
+  packed = scene.length ? await pack(scene) : '';
+  const base = location.href.split('#')[0];
+  const link = packed ? base + '#d=' + packed : '';
+  $('#longLink').value = link;
+  $('#linkLen').textContent = link.length;
+  $('#testLink').href = link || '#';
+  history.replaceState(null, '', packed ? '#e=' + packed : location.pathname + location.search);
+
+  const own = document.querySelector('input[name=qrsrc]:checked').value === 'own';
+  const qrText = own ? $('#ownLink').value.trim() : link;
+  const info = $('#qrInfo');
+  qrObj = null;
+  if (!qrText) {
+    info.textContent = own ? 'Paste your own link above to make the QR code.' : 'Add something to the poster to make the QR code.';
+  } else {
+    try {
+      qrObj = buildQR(qrText);
+      const n = qrObj.getModuleCount(), g = geo(), sh = SHAPES[shapeIdx];
+      const sideMm = g.qr.s * sh.mm / (1 + 2 * g.M), modMm = sideMm / n;
+      info.textContent = `On a ${sh.name} print the QR code is about ${sideMm.toFixed(0)} mm wide (${n}×${n} squares, ${modMm.toFixed(2)} mm each). ` +
+        (modMm >= 0.6 ? 'Easy to scan.' : modMm >= 0.4 ? 'Scan it up close.' : 'Very fine — use "My own link" for an easier QR code.');
+    } catch (err) {
+      info.textContent = 'Too much for one QR code. Use "My own link" instead.';
+    }
+  }
+  drawPreviewPoster();
+  renderPreview();
+}
+
+function download(canvas, name) {
+  canvas.toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/png');
+}
+
+function initEditor() {
+  const sel = $('#shape');
+  SHAPES.forEach((s, i) => sel.add(new Option(s.name, i)));
+  sel.onchange = () => { shapeIdx = +sel.value; poster.ox = poster.oy = 0; savePosterLocal(); changed(true); updateExport(); };
+  $('#posterFile').onchange = () => {
+    const f = $('#posterFile').files[0];
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => { poster.img = img; poster.scale = 1; poster.ox = poster.oy = 0; $('#posterScale').value = 1; drawPreviewPoster(); savePosterLocal(); };
+    img.src = URL.createObjectURL(f);
+  };
+  $('#posterScale').oninput = () => { poster.scale = +$('#posterScale').value; drawPreviewPoster(); };
+  $('#posterScale').onchange = savePosterLocal;
+  $('#fillBtn').onclick = () => { poster.scale = 1; poster.ox = poster.oy = 0; $('#posterScale').value = 1; drawPreviewPoster(); savePosterLocal(); };
+  $('#fitBtn').onclick = () => {
+    if (!poster.img) return;
+    const g = geo(), iw = poster.img.naturalWidth, ih = poster.img.naturalHeight;
+    poster.scale = Math.min(g.A.w / iw, g.A.h / ih) / Math.max(g.A.w / iw, g.A.h / ih);
+    poster.ox = poster.oy = 0; $('#posterScale').value = poster.scale; drawPreviewPoster(); savePosterLocal();
+  };
+  $('#removePoster').onclick = () => { poster.img = null; $('#posterFile').value = ''; drawPreviewPoster(); savePosterLocal(); };
+  $('#movePoster').onchange = () => $('#preview').classList.toggle('posterMode', $('#movePoster').checked);
+  $('#preview').addEventListener('pointerdown', startPosterDrag);
+  addEventListener('resize', () => { if (!$('#editor').hidden) applyZoom(); });
+
+  const typeSel = $('#newType');
+  const syncForm = () => { $('#newTextWrap').hidden = !TYPES[typeSel.value].text; };
+  typeSel.onchange = syncForm; syncForm();
+  $('#addBtn').onclick = () => {
+    const t = typeSel.value;
+    const url = $('#newUrl').value.trim();
+    if (t === 'y' && !ytId(url)) { alert("That doesn't look like a YouTube link."); return; }
+    if (t === 'g' && !driveId(url)) { alert("That doesn't look like a Google Drive file link. Use the file's Share link (set to 'Anyone with the link')."); return; }
+    if (!url && t !== 'b') { alert('Please enter a URL.'); return; }
+    addElement({ t, x: 0.08, y: nextY(), s: TYPES[t].size, txt: $('#newText').value.trim(), url, f: 0 });
+    $('#newText').value = ''; $('#newUrl').value = '';
+  };
+  $('#sampleBtn').onclick = () => {
+    scene = [
+      { t: 'b', x: 0.08, y: 0.08, s: 0.04, txt: 'Visit NASA', url: 'https://www.nasa.gov' },
+      { t: 'l', x: 0.08, y: 0.16, s: 0.03, txt: 'Wikipedia: Augmented reality', url: 'https://en.wikipedia.org/wiki/Augmented_reality' },
+      { t: 'i', x: 0.55, y: 0.3, s: 0.35, url: 'https://picsum.photos/id/1025/400/300' },
+      { t: 'y', x: 0.1, y: 0.6, s: 0.6, url: 'https://youtu.be/aqz-KE-bpKQ', f: 0 },
+    ];
+    renderList(); changed(true);
+  };
+  $('#clearBtn').onclick = () => { if (confirm('Remove everything you added?')) { scene = []; renderList(); changed(true); } };
+  $('#zoom').oninput = applyZoom;
+  $('#copyBtn').onclick = async () => {
+    try { await navigator.clipboard.writeText($('#longLink').value); $('#copyBtn').textContent = 'Copied!'; }
+    catch (e) { $('#longLink').select(); $('#copyBtn').textContent = 'Select & copy manually'; }
+    setTimeout(() => $('#copyBtn').textContent = 'Copy link', 1500);
+  };
+  document.querySelectorAll('input[name=qrsrc]').forEach(r => r.onchange = () => {
+    $('#ownLink').hidden = document.querySelector('input[name=qrsrc]:checked').value !== 'own';
+    updateExport();
+  });
+  $('#ownLink').oninput = () => changed(false);
+  // Print size: about 300 dots per inch for the chosen shape.
+  const printPx = () => Math.round(SHAPES[shapeIdx].mm / 25.4 * 300);
+  $('#dlPoster').onclick = () => { const c = document.createElement('canvas'); drawPoster(c, printPx()); download(c, 'ar-poster.png'); };
+  $('#dlFrame').onclick = () => { const c = document.createElement('canvas'); drawPoster(c, printPx(), { seeThrough: true }); download(c, 'ar-frame.png'); };
+  loadPosterLocal();
+}
+
+/* ---------- Viewer ---------- */
+let stream = null, running = false, held = false, lastSeen = 0, pose = null;
+const work = document.createElement('canvas');
+const wctx = work.getContext('2d', { willReadFrequently: true });
+
+function solve(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-10) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+function homography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = src[i], { x: u, y: v } = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  return solve(A, b);
+}
+function toCss(h) {
+  return `matrix3d(${h[0]},${h[3]},0,${h[6]},${h[1]},${h[4]},0,${h[7]},0,0,1,0,${h[2]},${h[5]},0,1)`;
+}
+
+function videoToScreen(p, vw, vh) {
+  const W = innerWidth, H = innerHeight;
+  const s = Math.max(W / vw, H / vh);
+  return { x: p.x * s + (W - vw * s) / 2, y: p.y * s + (H - vh * s) / 2 };
+}
+
+/* ---------- Media: YouTube players, autoplay, "Tap for sound" ---------- */
+let ytQueue = [], ytPlayers = [], ytApi = null, autoStarted = false;
+function loadYouTubeApi() {
+  if (window.YT && YT.Player) return Promise.resolve();
+  if (!ytApi) ytApi = new Promise(res => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); res(); };
+    const sc = document.createElement('script');
+    sc.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(sc);
+  });
+  return ytApi;
+}
+function clearMedia() {
+  ytPlayers.forEach(p => { try { p.player && p.player.destroy(); } catch (e) {} if (p.host) p.host.remove(); });
+  ytPlayers = []; ytQueue = []; autoStarted = false;
+  $('#layer').innerHTML = '';
+}
+function addUnmute(wrap, fn) {
+  if (wrap.querySelector('.unmute')) return;
+  const b = document.createElement('button');
+  b.className = 'unmute'; b.textContent = '🔇 Tap for sound';
+  b.style.fontSize = Math.max(16, (wrap.offsetWidth || 300) * 0.06) + 'px';
+  b.onclick = () => { fn(); b.remove(); };
+  wrap.appendChild(b);
+}
+function playYT(entry) {
+  const p = entry.player;
+  try { p.playVideo(); } catch (e) { return; }
+  // If the browser blocked playing with sound, play muted and offer a sound button.
+  setTimeout(() => {
+    const st = p.getPlayerState ? p.getPlayerState() : -1;
+    if (st !== 1 && st !== 3) {
+      if (entry.hidden) return; // audio only: leave the Play button for the user to tap
+      p.mute(); p.playVideo(); addUnmute(entry.wrap, () => { p.unMute(); p.playVideo(); }); }
+  }, 1500);
+}
+function setupYouTube() {
+  const list = ytQueue; ytQueue = [];
+  if (!list.length) return;
+  loadYouTubeApi().then(() => {
+    list.forEach(entry => {
+      if (!entry.wrap.isConnected) return;
+      ytPlayers.push(entry);
+      let target = entry.div, w = entry.w, h = entry.h;
+      if (entry.hidden) {
+        // Audio only: the player sits off-screen; the AR button controls it.
+        entry.host = document.createElement('div');
+        entry.host.style.cssText = 'position:fixed;left:-10000px;top:0;width:320px;height:180px;';
+        target = document.createElement('div');
+        entry.host.appendChild(target);
+        document.body.appendChild(entry.host);
+        w = 320; h = 180;
+        entry.btn.onclick = () => {
+          if (!entry.ready) return;
+          const st = entry.player.getPlayerState();
+          if (st === 1 || st === 3) entry.player.pauseVideo(); else { entry.player.unMute(); entry.player.playVideo(); }
+        };
+      }
+      entry.player = new YT.Player(target, {
+        videoId: entry.id, width: w, height: h,
+        playerVars: { playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => { entry.ready = true; if (autoStarted && entry.auto) playYT(entry); },
+          onStateChange: ev => {
+            if (entry.btn) entry.btn.textContent = (ev.data === 1 || ev.data === 3) ? '⏸ Pause audio' : '▶ Play audio';
+          },
+        },
+      });
+    });
+  });
+}
+// Called on the Start camera tap: lets phones play these with sound later.
+function unlockMedia() {
+  document.querySelectorAll('#layer [data-auto]').forEach(m => {
+    m.play().then(() => { if (!autoStarted) { m.pause(); m.currentTime = 0; } }).catch(() => {});
+  });
+}
+// Called the first time the poster is found.
+function startAutoplay() {
+  if (autoStarted) return;
+  autoStarted = true;
+  document.querySelectorAll('#layer [data-auto]').forEach(m => {
+    m.play().catch(() => {
+      m.muted = true;
+      m.play().then(() => addUnmute(m.parentElement, () => { m.muted = false; })).catch(() => {});
+    });
+  });
+  ytPlayers.forEach(entry => { if (entry.auto && entry.ready) playYT(entry); });
+}
+
+
+function buildLayer() {
+  clearMedia();
+  const layer = $('#layer'), g = geo();
+  layer.style.width = UNIT + 'px'; layer.style.height = UNIT * g.Hf + 'px';
+  (scene || []).forEach(e => layer.appendChild(makeEl(e, true)));
+  setupYouTube();
+}
+const frameModel = () => { const g = geo(); return [{ x: 0, y: 0 }, { x: UNIT, y: 0 }, { x: UNIT, y: UNIT * g.Hf }, { x: 0, y: UNIT * g.Hf }]; };
+const applyH = (h, x, y) => { const w = h[6] * x + h[7] * y + 1; return { x: (h[0] * x + h[1] * y + h[2]) / w, y: (h[3] * x + h[4] * y + h[5]) / w }; };
+
+/* ---------- Finding the poster's black frame ----------
+   Works on a small copy of the camera picture. Finds dark blobs, takes the outline
+   (convex hull) of each, and looks for the frame's shape: four long straight sides
+   plus one short diagonal side where the QR corner cuts the frame (bottom-left).
+   The four sides are fitted as straight lines and the corners are where they meet.
+   Returns the frame's corners [TL, TR, BR, BL] in video pixels, or null. */
+const fCanvas = document.createElement('canvas');
+const fCtx = fCanvas.getContext('2d', { willReadFrequently: true });
+function convexHull(pts) {
+  pts.sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  up.pop(); lo.pop();
+  return lo.concat(up);
+}
+// Simplify a closed outline to its main corners (Douglas-Peucker).
+function simplifyClosed(poly, eps) {
+  const n = poly.length;
+  if (n < 4) return poly;
+  let a = 0, b = 0, best = -1;
+  for (let i = 0; i < n; i++) { const d = (poly[i].x - poly[0].x) ** 2 + (poly[i].y - poly[0].y) ** 2; if (d > best) { best = d; b = i; } }
+  const dp = (pts) => {
+    if (pts.length < 3) return pts;
+    const A = pts[0], B = pts[pts.length - 1], L = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+    let idx = -1, dmax = 0;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = Math.abs((B.x - A.x) * (A.y - pts[i].y) - (A.x - pts[i].x) * (B.y - A.y)) / L;
+      if (d > dmax) { dmax = d; idx = i; }
+    }
+    if (dmax <= eps) return [A, B];
+    const l = dp(pts.slice(0, idx + 1)), r = dp(pts.slice(idx));
+    return l.slice(0, -1).concat(r);
+  };
+  const half1 = dp(poly.slice(a, b + 1)), half2 = dp(poly.slice(b).concat([poly[a]]));
+  return half1.slice(0, -1).concat(half2.slice(0, -1));
+}
+function fitLine(pts, P, Q) {
+  // Least-squares line through the outline points lying along segment P-Q.
+  const dx = Q.x - P.x, dy = Q.y - P.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+  const sel = pts.filter(p => {
+    const t = ((p.x - P.x) * ux + (p.y - P.y) * uy) / L;
+    const d = Math.abs((p.x - P.x) * uy - (p.y - P.y) * ux);
+    return t > 0.08 && t < 0.92 && d < 2.5;
+  });
+  if (sel.length < 6) return { px: P.x, py: P.y, ux, uy };
+  let mx = 0, my = 0; sel.forEach(p => { mx += p.x; my += p.y; }); mx /= sel.length; my /= sel.length;
+  let sxx = 0, sxy = 0, syy = 0; sel.forEach(p => { const a = p.x - mx, b = p.y - my; sxx += a * a; sxy += a * b; syy += b * b; });
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  let vx = Math.cos(th), vy = Math.sin(th);
+  if (vx * ux + vy * uy < 0) { vx = -vx; vy = -vy; }
+  return { px: mx, py: my, ux: vx, uy: vy };
+}
+function meet(l1, l2) {
+  const d = l1.ux * l2.uy - l1.uy * l2.ux;
+  if (Math.abs(d) < 1e-6) return null;
+  const t = ((l2.px - l1.px) * l2.uy - (l2.py - l1.py) * l2.ux) / d;
+  return { x: l1.px + t * l1.ux, y: l1.py + t * l1.uy };
+}
+// The QR-corner cut must be where it should be: the left side of the frame stops just above it
+// and the bottom side starts just right of it. Returns false if wrong, true if right,
+// null if that corner isn't in view. `hm` maps layout (frame widths x S) to image pixels.
+function cutLooksRight(hm, S, sample) {
+  const g = geo(), e = 0.025 * g.m;
+  const at = (u, v) => { const p = applyH(hm, u * S, v * S); return sample(p.x, p.y); };
+  const pairs = [
+    [at(g.T / 2, g.Hf - g.C - e), at(g.T / 2, g.Hf - g.C + e)],            // left side: dark above the cut, light below
+    [at(g.C + e, g.Hf - g.T / 2), at(g.C - e, g.Hf - g.T / 2)],            // bottom side: dark right of the cut, light left
+    [at(g.T / 2, g.Hf - g.C - 3 * e), at(g.T / 2 + 3 * e, g.Hf - g.C - 3 * e)], // the frame is only T thick (light just inside)
+  ];
+  const ok = pairs.filter(([a, b]) => !isNaN(a) && !isNaN(b));
+  if (ok.length < 2) return null;
+  return ok.filter(([a, b]) => b - a > 25).length >= ok.length - (ok.length > 2 ? 1 : 0);
+}
+// The four corners must make a sensible poster outline: convex, in clockwise order,
+// and with side lengths roughly in the poster's proportions (allowing for tilt).
+function quadOk(c) {
+  const g = geo();
+  for (let i = 0; i < 4; i++) {
+    const A = c[i], B = c[(i + 1) % 4], C = c[(i + 2) % 4];
+    if ((B.x - A.x) * (C.y - B.y) - (B.y - A.y) * (C.x - B.x) <= 0) return false;
+  }
+  const L = c.map((p, i) => Math.hypot(c[(i + 1) % 4].x - p.x, c[(i + 1) % 4].y - p.y));
+  const across = (L[0] + L[2]) / 2, down = (L[1] + L[3]) / 2;
+  const ratio = (down / across) / g.Hf;
+  return ratio > 0.4 && ratio < 2.5 && Math.min(L[0], L[2]) / Math.max(L[0], L[2]) > 0.3 && Math.min(L[1], L[3]) / Math.max(L[1], L[3]) > 0.3;
+}
+// The QR code must be in the corner: white paper around it and a fine mix of black and
+// white inside it (any QR, however dense). Returns null if it's too small in the picture to tell.
+function qrLooksRight(hm, S, sample) {
+  const g = geo(), q = g.qr;
+  const at = (u, v) => { const p = applyH(hm, u * S, v * S); return sample(p.x, p.y); };
+  const a = applyH(hm, q.x * S, q.y * S), b = applyH(hm, (q.x + q.s) * S, q.y * S);
+  const size = Math.hypot(b.x - a.x, b.y - a.y);
+  if (size < 18) return null;
+  const quiet = [at(q.x / 2, q.y + q.s * 0.3), at(q.x / 2, q.y + q.s * 0.7), at(q.x + q.s * 0.3, q.y - q.x / 2), at(q.x + q.s * 0.7, q.y - q.x / 2),
+                 at(q.x + q.s + q.x / 2, q.y + q.s * 0.5), at(q.x + q.s * 0.5, q.y + q.s + q.x / 2)];
+  const inside = [];
+  for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) inside.push(at(q.x + (0.06 + i * 0.11) * q.s, q.y + (0.06 + j * 0.11) * q.s));
+  if (inside.some(isNaN) || quiet.filter(x => !isNaN(x)).length < 4) return null;
+  const qv = quiet.filter(x => !isNaN(x)), paper = qv.reduce((x, y) => x + y) / qv.length;
+  const ink = Math.min(...inside);
+  if (paper - ink < 40) return false;
+  const half = ink + (paper - ink) / 2;
+  if (qv.some(x => x < half)) return false;                       // paper around it
+  const darkFrac = inside.filter(x => x < half).length / inside.length;
+  if (darkFrac >= 0.2 && darkFrac <= 0.8) return true;            // black-and-white mix
+  const mean = inside.reduce((x, y) => x + y) / inside.length;    // small and blurry: at least grey, not blank
+  return size < 45 && mean > ink + 0.2 * (paper - ink) && mean < paper - 0.15 * (paper - ink);
+}
+function findFrame(video, prev) {
+  const g = geo();
+  const vw = video.videoWidth, vh = video.videoHeight;
+  // Near the last position, look at just that patch in more detail.
+  let ox = 0, oy = 0, cw = vw, ch = vh;
+  if (prev) {
+    const xs = prev.map(p => p.x), ys = prev.map(p => p.y);
+    const m = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 60) * 0.35;
+    ox = Math.max(0, Math.floor(Math.min(...xs) - m)); oy = Math.max(0, Math.floor(Math.min(...ys) - m));
+    cw = Math.min(vw, Math.ceil(Math.max(...xs) + m)) - ox; ch = Math.min(vh, Math.ceil(Math.max(...ys) + m)) - oy;
+    if (cw < 32 || ch < 32) { ox = 0; oy = 0; cw = vw; ch = vh; }
+  }
+  const sc = Math.min(1, 640 / Math.max(cw, ch));
+  const W = Math.max(1, Math.round(cw * sc)), H = Math.max(1, Math.round(ch * sc)), N = W * H;
+  if (fCanvas.width !== W || fCanvas.height !== H) { fCanvas.width = W; fCanvas.height = H; }
+  fCtx.drawImage(video, ox, oy, cw, ch, 0, 0, W, H);
+  const d = fCtx.getImageData(0, 0, W, H).data;
+  const gr = new Float32Array(N);
+  for (let i = 0, j = 0; i < N; i++, j += 4) gr[i] = d[j] * 0.3 + d[j + 1] * 0.59 + d[j + 2] * 0.11;
+  // Dark = clearly darker than its surroundings (copes with uneven lighting).
+  const W1 = W + 1, ii = new Float64Array(W1 * (H + 1));
+  for (let y = 0; y < H; y++) { let row = 0; for (let x = 0; x < W; x++) { row += gr[y * W + x]; ii[(y + 1) * W1 + x + 1] = ii[y * W1 + x + 1] + row; } }
+  const r = Math.max(8, Math.round(Math.max(W, H) / 8));
+  const dark = new Uint8Array(N);
+  for (let y = 0; y < H; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
+    for (let x = 0; x < W; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1);
+      const m = (ii[y1 * W1 + x1] - ii[y0 * W1 + x1] - ii[y1 * W1 + x0] + ii[y0 * W1 + x0]) / ((x1 - x0) * (y1 - y0));
+      dark[y * W + x] = gr[y * W + x] < m * 0.72 ? 1 : 0;
+    }
+  }
+  // Blobs.
+  const lab = new Int32Array(N), stack = new Int32Array(N), blobs = [];
+  let id = 0;
+  for (let i = 0; i < N; i++) {
+    if (!dark[i] || lab[i]) continue;
+    id++; let sp = 0; stack[sp++] = i; lab[i] = id;
+    let area = 0, minx = W, miny = H, maxx = 0, maxy = 0;
+    while (sp) {
+      const p = stack[--sp], x = p % W, y = (p / W) | 0;
+      area++;
+      if (x < minx) minx = x; if (x > maxx) maxx = x; if (y < miny) miny = y; if (y > maxy) maxy = y;
+      if (x > 0 && dark[p - 1] && !lab[p - 1]) { lab[p - 1] = id; stack[sp++] = p - 1; }
+      if (x < W - 1 && dark[p + 1] && !lab[p + 1]) { lab[p + 1] = id; stack[sp++] = p + 1; }
+      if (y > 0 && dark[p - W] && !lab[p - W]) { lab[p - W] = id; stack[sp++] = p - W; }
+      if (y < H - 1 && dark[p + W] && !lab[p + W]) { lab[p + W] = id; stack[sp++] = p + W; }
+    }
+    const bw = maxx - minx + 1, bh = maxy - miny + 1;
+    if (bw < 28 || bh < 28 || area < 120) continue;
+    if (area > 0.95 * bw * bh) continue; // completely solid shapes aren't frames
+    if (minx <= 0 || miny <= 0 || maxx >= W - 1 || maxy >= H - 1) continue; // cut off by the picture's edge: can't trust its shape
+    blobs.push({ id, minx, miny, maxx, maxy, size: bw * bh });
+  }
+  blobs.sort((a, b) => b.size - a.size);
+  const avg = a => a.reduce((t, x) => t + x, 0) / a.length;
+  const toVid = p => ({ x: p.x / sc + ox, y: p.y / sc + oy });
+  const prevC = prev ? { x: avg(prev.map(p => p.x)), y: avg(prev.map(p => p.y)) } : null;
+  let best = null;
+  for (const bl of blobs.slice(0, 8)) {
+    // Outline points: leftmost/rightmost per row and topmost/bottommost per column.
+    const pts = [];
+    for (let y = bl.miny; y <= bl.maxy; y++) {
+      let a = -1, b = -1;
+      for (let x = bl.minx; x <= bl.maxx; x++) if (lab[y * W + x] === bl.id) { a = x; break; }
+      if (a < 0) continue;
+      for (let x = bl.maxx; x >= a; x--) if (lab[y * W + x] === bl.id) { b = x; break; }
+      pts.push({ x: a, y: y + 0.5 }, { x: b + 1, y: y + 0.5 });
+    }
+    for (let x = bl.minx; x <= bl.maxx; x++) {
+      let a = -1, b = -1;
+      for (let y = bl.miny; y <= bl.maxy; y++) if (lab[y * W + x] === bl.id) { a = y; break; }
+      if (a < 0) continue;
+      for (let y = bl.maxy; y >= a; y--) if (lab[y * W + x] === bl.id) { b = y; break; }
+      pts.push({ x: x + 0.5, y: a }, { x: x + 0.5, y: b + 1 });
+    }
+    let hull = convexHull(pts.slice());
+    if (hull.length < 4) continue;
+    let area2 = 0; for (let i = 0; i < hull.length; i++) { const p = hull[i], q = hull[(i + 1) % hull.length]; area2 += p.x * q.y - q.x * p.y; }
+    if (area2 < 0) hull.reverse(); // clockwise on screen
+    const per = hull.reduce((t, p, i) => t + Math.hypot(hull[(i + 1) % hull.length].x - p.x, hull[(i + 1) % hull.length].y - p.y), 0);
+    let poly = null;
+    for (const f of [0.004, 0.007, 0.011, 0.016, 0.022]) { poly = simplifyClosed(hull, Math.max(1.2, per * f)); if (poly.length <= 5) break; }
+    if (!poly || poly.length < 4 || poly.length > 6) continue;
+    const n = poly.length;
+    const len = poly.map((p, i) => Math.hypot(poly[(i + 1) % n].x - p.x, poly[(i + 1) % n].y - p.y));
+    let corners, cutCheck = null;
+    if (n >= 5) {
+      // The short side is the QR corner cut (two short sides if blur has merged the QR into the
+      // frame); the next four sides are left, top, right, bottom.
+      let k = 0, c = n - 4;
+      if (c === 1) k = len.indexOf(Math.min(...len));
+      else { let bestSum = Infinity; for (let i = 0; i < n; i++) { const sum = len[i] + len[(i + 1) % n]; if (sum < bestSum) { bestSum = sum; k = i; } } }
+      const cutIdx = Array.from({ length: c }, (_, j) => (k + j) % n);
+      const others = len.filter((_, i) => !cutIdx.includes(i));
+      if (Math.max(...cutIdx.map(i => len[i])) > 0.6 * Math.min(...others)) continue;
+      const side = j => [poly[(k + c + j) % n], poly[(k + c + j + 1) % n]];
+      const L = [0, 1, 2, 3].map(j => { const [P, Q] = side(j); return fitLine(pts, P, Q); });
+      const [left, top, right, bottom] = L;
+      corners = [meet(left, top), meet(top, right), meet(right, bottom), meet(bottom, left)];
+      cutCheck = [poly[k], poly[(k + c) % n]]; // ends of the cut: on the bottom side, then on the left side
+    } else {
+      // No cut visible (e.g. far away and blurred into the QR): only usable if we know which way up it was.
+      if (!prev) continue;
+      const L = [0, 1, 2, 3].map(j => fitLine(pts, poly[j], poly[(j + 1) % 4]));
+      const q4 = [meet(L[3], L[0]), meet(L[0], L[1]), meet(L[1], L[2]), meet(L[2], L[3])];
+      if (q4.some(p => !p)) continue;
+      let bestK = 0, bestD = Infinity;
+      for (let k = 0; k < 4; k++) {
+        const dsum = [0, 1, 2, 3].reduce((t, j) => { const p = toVid(q4[(k + j) % 4]); return t + Math.hypot(p.x - prev[j].x, p.y - prev[j].y); }, 0);
+        if (dsum < bestD) { bestD = dsum; bestK = k; }
+      }
+      corners = [0, 1, 2, 3].map(j => q4[(bestK + j) % 4]);
+      // Without the cut we only trust a frame right where the poster just was.
+      const pv = prev.map(p => ({ x: (p.x - ox) * sc, y: (p.y - oy) * sc }));
+      const sz = Math.hypot(pv[1].x - pv[0].x, pv[1].y - pv[0].y);
+      if (Math.max(...corners.map((p, i) => Math.hypot(p.x - pv[i].x, p.y - pv[i].y))) > 0.15 * sz + 6) continue;
+    }
+    if (corners.some(p => !p || !isFinite(p.x) || !isFinite(p.y)) || !quadOk(corners)) continue;
+    const sides = corners.map((p, i) => Math.hypot(corners[(i + 1) % 4].x - p.x, corners[(i + 1) % 4].y - p.y));
+    if (Math.min(...sides) < 25 || Math.max(...sides) / Math.min(...sides) > 6) continue;
+    // Check it really is our frame, using the known layout.
+    const S = 1000;
+    const hm = homography([{ x: 0, y: 0 }, { x: S, y: 0 }, { x: S, y: S * g.Hf }, { x: 0, y: S * g.Hf }], corners);
+    if (!hm) continue;
+    const at = (u, v) => { const p = applyH(hm, u * S, v * S), X = Math.round(p.x), Y = Math.round(p.y); return (X < 0 || Y < 0 || X >= W || Y >= H) ? NaN : gr[Y * W + X]; };
+    if (cutCheck) {
+      // The cut must sit where the QR corner is for this poster shape (also checks the shape).
+      const e1 = applyH(hm, g.C * S, g.Hf * S), e2 = applyH(hm, 0, (g.Hf - g.C) * S);
+      const cl = Math.hypot(cutCheck[1].x - cutCheck[0].x, cutCheck[1].y - cutCheck[0].y);
+      const err = Math.max(Math.hypot(e1.x - cutCheck[0].x, e1.y - cutCheck[0].y), Math.hypot(e2.x - cutCheck[1].x, e2.y - cutCheck[1].y));
+      if (err > Math.max(3, 0.3 * cl)) continue;
+    }
+    const smp = (x, y) => { const X = Math.round(x), Y = Math.round(y); return (X < 0 || Y < 0 || X >= W || Y >= H) ? NaN : gr[Y * W + X]; };
+    const cut = cutLooksRight(hm, S, smp);
+    if (cut === false || (cut === null && !cutCheck && !prev)) continue;
+    if (qrLooksRight(hm, S, smp) === false) continue;
+    const band = [], outside = [];
+    const fr = [0.15, 0.3, 0.5, 0.7, 0.85];
+    fr.forEach(t => {
+      band.push(at(t, g.T / 2), at(1 - g.T / 2, t * g.Hf), at(g.C + t * (1 - g.C), g.Hf - g.T / 2), at(g.T / 2, t * (g.Hf - g.C)));
+      outside.push(at(t, -g.M * 0.6), at(1 + g.M * 0.6, t * g.Hf), at(t, g.Hf + g.M * 0.6), at(-g.M * 0.6, t * g.Hf));
+    });
+    const bandOk = band.filter(x => !isNaN(x)), outOk = outside.filter(x => !isNaN(x));
+    if (bandOk.length < 16 || outOk.length < 8) continue;
+    const ink = avg(bandOk), paper = avg(outOk), span = paper - ink;
+    if (span < 30) continue;
+    const half = ink + span / 2;
+    if (bandOk.filter(x => x < half).length < bandOk.length * 0.85) continue;
+    if (outOk.filter(x => x > half).length < outOk.length * 0.7) continue;
+    const vid = corners.map(toVid);
+    const c = { x: avg(vid.map(p => p.x)), y: avg(vid.map(p => p.y)) };
+    const score = prevC ? Math.hypot(c.x - prevC.x, c.y - prevC.y) : -bl.size;
+    if (!best || score < best.score) best = { score, pts: vid };
+  }
+  return best ? best.pts : null;
+}
+
+/* ---------- Following the frame once found ----------
+   Starting from the last known position, look along each of the four sides for the
+   frame's outer edge (dark frame -> light paper) at many points. Points hidden by a
+   hand, or off-screen, are dropped; a straight line is fitted to the rest of each side.
+   Copes with partial cover and with corners leaving the picture. */
+const eCanvas = document.createElement('canvas');
+const eCtx = eCanvas.getContext('2d', { willReadFrequently: true });
+function robustLine(pts) {
+  let use = pts;
+  for (let it = 0; it < 3; it++) {
+    if (use.length < 5) return null;
+    let mx = 0, my = 0; use.forEach(p => { mx += p.x; my += p.y; }); mx /= use.length; my /= use.length;
+    let sxx = 0, sxy = 0, syy = 0; use.forEach(p => { const a = p.x - mx, b = p.y - my; sxx += a * a; sxy += a * b; syy += b * b; });
+    const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), ux = Math.cos(th), uy = Math.sin(th);
+    const res = pts.map(p => Math.abs((p.x - mx) * uy - (p.y - my) * ux));
+    const sorted = res.slice().sort((a, b) => a - b), med = sorted[Math.floor(sorted.length / 2)];
+    const lim = Math.max(1.2, med * 3);
+    const next = pts.filter((p, i) => res[i] <= lim);
+    if (it === 2 || next.length === use.length) return next.length >= 5 ? { px: mx, py: my, ux, uy, n: next.length } : null;
+    use = next;
+  }
+  return null;
+}
+function trackEdges(video, prev) {
+  const g = geo();
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const xs = prev.map(p => p.x), ys = prev.map(p => p.y);
+  const span0 = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const pad = span0 * 0.15 + 20;
+  const ox = Math.max(0, Math.floor(Math.min(...xs) - pad)), oy = Math.max(0, Math.floor(Math.min(...ys) - pad));
+  const cw = Math.min(vw, Math.ceil(Math.max(...xs) + pad)) - ox, ch = Math.min(vh, Math.ceil(Math.max(...ys) + pad)) - oy;
+  if (cw < 32 || ch < 32) return null;
+  const sc = Math.min(1, 640 / Math.max(cw, ch));
+  const W = Math.max(1, Math.round(cw * sc)), H = Math.max(1, Math.round(ch * sc));
+  if (eCanvas.width !== W || eCanvas.height !== H) { eCanvas.width = W; eCanvas.height = H; }
+  eCtx.drawImage(video, ox, oy, cw, ch, 0, 0, W, H);
+  const d = eCtx.getImageData(0, 0, W, H).data;
+  const gr = new Float32Array(W * H);
+  for (let i = 0, j = 0; i < W * H; i++, j += 4) gr[i] = d[j] * 0.3 + d[j + 1] * 0.59 + d[j + 2] * 0.11;
+  const val = (x, y) => {
+    if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) return NaN;
+    const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * W + x0;
+    return gr[i] * (1 - fx) * (1 - fy) + gr[i + 1] * fx * (1 - fy) + gr[i + W] * (1 - fx) * fy + gr[i + W + 1] * fx * fy;
+  };
+  const P = prev.map(p => ({ x: (p.x - ox) * sc, y: (p.y - oy) * sc }));
+  const topLen = Math.hypot(P[1].x - P[0].x, P[1].y - P[0].y);
+  const band = Math.max(1.5, g.T * topLen);                  // frame thickness in pixels (roughly)
+  const R = Math.max(6, 0.06 * topLen + band);               // how far to search either side
+  // Sides: top TL->TR, right TR->BR, bottom BR->BL, left BL->TL. Skip the QR-corner cut.
+  const sides = [[0, 1, 0.04, 0.96], [1, 2, 0.04, 0.96], [2, 3, 0.04, 1 - g.C - 0.03], [3, 0, g.C / g.Hf + 0.03, 0.96]];
+  const lines = [], allFound = [];
+  for (const [a, b, t0, t1] of sides) {
+    const A = P[a], B = P[b], L = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+    const band = Math.max(1.5, g.T * L / (a % 2 === 0 ? 1 : g.Hf)); // this side's frame thickness in pixels
+    const ux = (B.x - A.x) / L, uy = (B.y - A.y) / L, nx = uy, ny = -ux; // outward normal (clockwise outline)
+    const found = [];
+    const N = 40;
+    let tried = 0;
+    for (let k = 0; k <= N; k++) {
+      const t = t0 + (t1 - t0) * k / N;
+      const sx = A.x + (B.x - A.x) * t, sy = A.y + (B.y - A.y) * t;
+      if (isNaN(val(sx + nx * R, sy + ny * R)) || isNaN(val(sx - nx * R, sy - ny * R))) continue; // off-screen
+      tried++;
+      let bestS = null, bestG = 0;
+      for (let s = -R; s <= R; s += 0.5) {
+        const g1 = val(sx + nx * (s + 1), sy + ny * (s + 1)), g0 = val(sx + nx * (s - 1), sy + ny * (s - 1));
+        if (isNaN(g1) || isNaN(g0)) continue;
+        const gd = g1 - g0; // brighter outside = frame's outer edge
+        if (gd > bestG) { bestG = gd; bestS = s; }
+      }
+      if (bestS === null || bestG < 20) continue;
+      // Sub-pixel: fit a curve through the strongest edge and its neighbours.
+      const gAt = s => val(sx + nx * (s + 1), sy + ny * (s + 1)) - val(sx + nx * (s - 1), sy + ny * (s - 1));
+      const gm = gAt(bestS - 0.5), gp = gAt(bestS + 0.5), den = gm - 2 * bestG + gp;
+      if (!isNaN(gm) && !isNaN(gp) && den < 0) bestS += 0.5 * 0.5 * (gm - gp) / den;
+      // Must be dark just inside (the frame) and light just outside (paper).
+      const inside = val(sx + nx * (bestS - band * 0.5 - 0.5), sy + ny * (bestS - band * 0.5 - 0.5));
+      const outside = val(sx + nx * (bestS + Math.max(1.5, band * 0.5)), sy + ny * (bestS + Math.max(1.5, band * 0.5)));
+      const inside2 = val(sx + nx * (bestS - band * 0.7 - 0.5), sy + ny * (bestS - band * 0.7 - 0.5));
+      if (isNaN(inside) || isNaN(outside) || isNaN(inside2) || outside - inside < 30 || outside - inside2 < 20) continue;
+      found.push({ x: sx + nx * bestS, y: sy + ny * bestS, inside, outside });
+    }
+    // Need most of the visible part of each side, with white paper outside it.
+    if (tried < 10 || found.length < 0.5 * tried) return null;
+    const line = robustLine(found);
+    if (!line || line.n < 8) return null;
+    lines.push(line);
+    allFound.push(found);
+  }
+  // Paper outside the frame should look like paper on every side (artwork edges don't).
+  const med = a => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+  const sideOut = allFound.map(f => med(f.map(p => p.outside))), sideIn = allFound.map(f => med(f.map(p => p.inside)));
+  const paper = Math.max(...sideOut), ink = Math.min(...sideIn);
+  if (paper - ink < 40) return null;
+  if (sideOut.some(o => o < ink + 0.75 * (paper - ink))) return null;
+  if (sideIn.some(i => i > ink + 0.35 * (paper - ink))) return null;
+  const [top, right, bottom, left] = lines;
+  const c = [meet(left, top), meet(top, right), meet(right, bottom), meet(bottom, left)];
+  if (c.some(p => !p || !isFinite(p.x) || !isFinite(p.y)) || !quadOk(c)) return null;
+  // Sanity: shouldn't jump far from where it was.
+  const moved = Math.max(...c.map((p, i) => Math.hypot(p.x - P[i].x, p.y - P[i].y)));
+  if (moved > 0.3 * topLen + 10) return null;
+  const sidesLen = c.map((p, i) => Math.hypot(c[(i + 1) % 4].x - p.x, c[(i + 1) % 4].y - p.y));
+  if (Math.min(...sidesLen) < 15) return null;
+  // If the QR corner is in view, the cut must be in the right place.
+  const S = 1000, hm = homography([{ x: 0, y: 0 }, { x: S, y: 0 }, { x: S, y: S * g.Hf }, { x: 0, y: S * g.Hf }], c);
+  if (!hm || cutLooksRight(hm, S, val) === false || qrLooksRight(hm, S, val) === false) return null;
+  return c.map(p => ({ x: p.x / sc + ox, y: p.y / sc + oy }));
+}
+
+/* ---------- QR code (close up, and for loading a scene) ---------- */
+let lastSource = 'frame';
+let worker = null, detecting = false, roi = null, misses = 0, modules = 0;
+let detCount = 0, rate = 0, rateT = 0;
+let fStreak = 0, fPrev = null, lastPts = null;
+// The QR's corners on the poster, in layer pixels.
+const qrModel = () => { const g = geo(), q = g.qr; return [[q.x, q.y], [q.x + q.s, q.y], [q.x + q.s, q.y + q.s], [q.x, q.y + q.s]].map(([u, v]) => ({ x: u * UNIT, y: v * UNIT })); };
+function qrToFrame(qpts) {
+  const h = homography(qrModel(), qpts);
+  return h ? frameModel().map(p => applyH(h, p.x, p.y)) : null;
+}
+function qrBoxFromFrame(fpts) {
+  const h = homography(frameModel(), fpts);
+  if (!h) return null;
+  const q = qrModel().map(p => applyH(h, p.x, p.y)), xs = q.map(p => p.x), ys = q.map(p => p.y);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+
+function initWorker() {
+  if (worker || !window.Worker) return;
+  try {
+    const tag = document.querySelector('script[src*="jsQR"]');
+    const src = new URL(tag.getAttribute('src'), location.href).href;
+    const code = 'importScripts(' + JSON.stringify(src) + ');' +
+      'onmessage=function(e){var d=e.data;var c=jsQR(new Uint8ClampedArray(d.buf),d.w,d.h,{inversionAttempts:"dontInvert"});' +
+      'postMessage(c?{data:c.data,v:c.version,pts:[c.location.topLeftCorner,c.location.topRightCorner,c.location.bottomRightCorner,c.location.bottomLeftCorner]}:null);};';
+    worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+    worker.onerror = () => { worker = null; };
+  } catch (e) { worker = null; }
+}
+function decodeMain(img) {
+  const c = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+  if (!c) return null;
+  const L = c.location;
+  return { data: c.data, v: c.version, pts: [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner] };
+}
+function decodeWorker(img) {
+  return new Promise(res => {
+    const w = worker;
+    w.onmessage = e => res(e.data);
+    w.onerror = () => { worker = null; res(null); };
+    w.postMessage({ buf: img.data.buffer, w: img.width, h: img.height }, [img.data.buffer]);
+  });
+}
+
+async function detectOnce(video) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const now = performance.now();
+  const recent = (now - lastSeen < 1500) ? lastPts : null;
+  // 1. The frame (once we know the poster shape from the scene).
+  if (Array.isArray(scene)) {
+    // Already following it: track the edges (copes with hands and corners off-screen).
+    if (recent) {
+      const t = trackEdges(video, recent);
+      if (t) { lastPts = t; roi = qrBoxFromFrame(t); misses = 0; return { data: '', pts: t, vw, vh, src: 'frame' }; }
+    }
+    const f = findFrame(video, recent);
+    if (f) {
+      const c = { x: (f[0].x + f[2].x) / 2, y: (f[0].y + f[2].y) / 2 }, size = Math.hypot(f[1].x - f[0].x, f[1].y - f[0].y);
+      fStreak = (fPrev && Math.hypot(c.x - fPrev.x, c.y - fPrev.y) < size * 0.3) ? fStreak + 1 : 1;
+      fPrev = c;
+      // Trust it if it's where we were just tracking, or it has been seen steadily for a few frames.
+      const near = recent && Math.hypot(c.x - (recent[0].x + recent[2].x) / 2, c.y - (recent[0].y + recent[2].y) / 2) < size * 0.4;
+      if (near || fStreak >= 3) {
+        lastPts = f;
+        roi = qrBoxFromFrame(f); misses = 0;
+        return { data: '', pts: f, vw, vh, src: 'frame' };
+      }
+    } else { fStreak = 0; fPrev = null; }
+  }
+  // 2. The QR code (close up, or to load a scene).
+  let cx = 0, cy = 0, cw = vw, ch = vh, max = 720;
+  if (roi && misses < 2 && roi.w > 4) {
+    const m = Math.max(roi.w, roi.h) * 0.6;
+    cx = Math.max(0, Math.floor(roi.x - m)); cy = Math.max(0, Math.floor(roi.y - m));
+    cw = Math.min(vw, Math.ceil(roi.x + roi.w + m)) - cx;
+    ch = Math.min(vh, Math.ceil(roi.y + roi.h + m)) - cy;
+    max = 560;
+    if (cw < 8 || ch < 8) { cx = 0; cy = 0; cw = vw; ch = vh; max = 720; }
+  }
+  let sc = Math.min(1, max / Math.max(cw, ch));
+  if (roi && misses < 2 && modules) sc = Math.min(sc, Math.max(0.25, modules * 4 / Math.max(roi.w, roi.h, 1)));
+  const w = Math.max(1, Math.round(cw * sc)), h = Math.max(1, Math.round(ch * sc));
+  if (work.width !== w || work.height !== h) { work.width = w; work.height = h; }
+  wctx.drawImage(video, cx, cy, cw, ch, 0, 0, w, h);
+  const img = wctx.getImageData(0, 0, w, h);
+  const r = worker ? await decodeWorker(img) : decodeMain(img);
+  if (!r) { misses++; return null; }
+  misses = 0;
+  if (r.v) modules = 17 + 4 * r.v;
+  const qpts = r.pts.map(p => ({ x: p.x / sc + cx, y: p.y / sc + cy }));
+  const xs = qpts.map(p => p.x), ys = qpts.map(p => p.y);
+  roi = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+  const pts = Array.isArray(scene) ? qrToFrame(qpts) : null;
+  if (pts) lastPts = pts;
+  return { data: r.data, pts, vw, vh, src: 'QR' };
+}
+
+/* One-euro filter: steady when still, responsive when moving. */
+class OneEuro {
+  constructor(minCut = 1.2, beta = 0.02, dCut = 1) { Object.assign(this, { minCut, beta, dCut }); this.reset(); }
+  reset() { this.x = null; this.dx = 0; this.t = 0; }
+  a(cut, dt) { const tau = 1 / (2 * Math.PI * cut); return 1 / (1 + tau / dt); }
+  f(x, t) {
+    if (this.x === null) { this.x = x; this.t = t; return x; }
+    const dt = Math.max(0.001, (t - this.t) / 1000); this.t = t;
+    this.dx += this.a(this.dCut, dt) * ((x - this.x) / dt - this.dx);
+    this.x += this.a(this.minCut + this.beta * Math.abs(this.dx), dt) * (x - this.x);
+    return this.x;
+  }
+}
+const filters = Array.from({ length: 8 }, () => new OneEuro());
+function resetTracking() { pose = null; roi = null; misses = 0; modules = 0; fStreak = 0; fPrev = null; lastPts = null; filters.forEach(f => f.reset()); }
+
+function onDetect(r, now) {
+  if (!r) return;
+  if (!scene && /#[de]=/.test(r.data)) {
+    const data = r.data.split(/#[de]=/)[1];
+    scene = 'loading';
+    unpack(data).then(u => { shapeIdx = u.shape; scene = u.els; packed = data; buildLayer(); })
+      .catch(() => { scene = null; setStatus("Found a scene link, but couldn't read it."); });
+  }
+  if (!r.pts) return;
+  const pts = r.pts.map(p => videoToScreen(p, r.vw, r.vh));
+  if (pose && (now - lastSeen > 500 || Math.hypot(pts[0].x - pose[0].x, pts[0].y - pose[0].y) > 250)) filters.forEach(f => f.reset());
+  // Switching between frame and QR can shift things slightly: let the filter blend it.
+  pose = pts.map((p, i) => ({ x: filters[i * 2].f(p.x, now), y: filters[i * 2 + 1].f(p.y, now) }));
+  const h = homography(frameModel(), pose);
+  if (h) {
+    const layer = $('#layer');
+    layer.style.transform = toCss(h);
+    layer.style.visibility = 'visible';
+  }
+  lastSeen = now;
+  lastSource = r.src;
+  detCount++;
+  if (Array.isArray(scene)) startAutoplay();
+}
+
+function tick() {
+  if (!running) return;
+  const video = $('#cam');
+  const now = performance.now();
+  if (!held && !detecting && video.readyState >= 2 && video.videoWidth) {
+    detecting = true;
+    detectOnce(video).then(r => { if (running && !held) onDetect(r, performance.now()); })
+      .catch(() => {}).finally(() => { detecting = false; });
+  }
+  if (now - rateT >= 1000) { rate = Math.round(detCount * 1000 / (now - rateT || 1)); detCount = 0; rateT = now; }
+  const layer = $('#layer');
+  if (now < noteUntil) setStatus(note);
+  else if (held) setStatus('Holding position — tap Resume to track again.');
+  else if (!lastSeen) setStatus(Array.isArray(scene) ? 'Looking for the poster…' : 'Point at the QR code on a poster.');
+  else if (now - lastSeen > 700) { layer.classList.add('lost'); setStatus('Poster lost — step back so the whole black frame (or the QR code) is in view.'); }
+  else { layer.classList.remove('lost'); setStatus(Array.isArray(scene) ? 'Tracking (' + lastSource + ') · ' + rate + ' fps' : 'Loading scene…'); }
+  requestAnimationFrame(tick);
+}
+
+let lastStatus = '';
+let note = '', noteUntil = 0;
+function showNote(t) { note = t; noteUntil = performance.now() + 2500; setStatus(t); }
+function watchEnded(st) {
+  st.getVideoTracks().forEach(t => t.onended = () => {
+    if (stream === st && running) { stopCamera(); $('#startPanel').hidden = false; $('#startMsg').textContent = 'The camera was taken by another app. Tap Start camera to try again.'; }
+  });
+}
+async function videoCams() {
+  try { return (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput'); } catch (e) { return []; }
+}
+async function updateCamBtn() { $('#camBtn').hidden = (await videoCams()).length < 2; }
+function setStatus(t) { if (t !== lastStatus) { $('#status').textContent = t; lastStatus = t; } }
+
+const RES = { width: { ideal: 1280 }, height: { ideal: 720 } };
+function savedCam() { try { return localStorage.getItem('arCam'); } catch (e) { return null; } }
+function saveCam(id) { try { if (id) localStorage.setItem('arCam', id); else localStorage.removeItem('arCam'); } catch (e) {} }
+// Most preferred first: the camera chosen with the Camera button, then a back camera, then any camera.
+function cameraChoices() {
+  const list = [];
+  const id = savedCam();
+  if (id) list.push({ video: { deviceId: { exact: id }, ...RES }, audio: false });
+  list.push({ video: { facingMode: { exact: 'environment' }, ...RES }, audio: false });
+  list.push({ video: { facingMode: { ideal: 'environment' }, ...RES }, audio: false });
+  list.push({ video: true, audio: false });
+  return list;
+}
+const BUSY_MSG = "Your camera is still being used by another app — probably the camera app you scanned the QR with. Close that app (swipe it away in your recent apps), then come back here. The camera will start by itself.";
+let camAttempt = 0; // bumps to cancel an in-progress start
+
+// getUserMedia that gives up after ms; if the camera arrives late, it is released again.
+function gumWithTimeout(c, ms) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const t = setTimeout(() => { done = true; const e = new Error('Camera did not respond'); e.name = 'TimeoutError'; reject(e); }, ms);
+    navigator.mediaDevices.getUserMedia(c).then(st => {
+      if (done) { st.getTracks().forEach(tr => tr.stop()); return; }
+      clearTimeout(t); resolve(st);
+    }, err => { if (!done) { clearTimeout(t); reject(err); } });
+  });
+}
+async function openCamera(skip = 0) {
+  let last;
+  const all = cameraChoices();
+  const preferred = all.slice(0, -1); // everything except "any camera"
+  const list = preferred.slice(skip % preferred.length).concat(preferred.slice(0, skip % preferred.length), all.slice(-1));
+  for (const c of list) {
+    try { return await gumWithTimeout(c, 4000); }
+    catch (e) {
+      last = e;
+      // Only move on to a less-preferred camera if this one doesn't exist.
+      // A busy camera is retried later instead of falling back to the front camera.
+      if (!['OverconstrainedError', 'NotFoundError', 'TypeError'].includes(e.name)) throw e;
+    }
+  }
+  throw last;
+}
+// Resolves true once the video is actually showing frames.
+function waitForFrames(video, ms) {
+  return new Promise(resolve => {
+    const t0 = performance.now();
+    (function check() {
+      if (video.readyState >= 2 && video.videoWidth > 0) return resolve(true);
+      if (performance.now() - t0 > ms) return resolve(false);
+      setTimeout(check, 150);
+    })();
+  });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Camera is up and showing a picture: switch to the AR view.
+function goLive(st) {
+  stream = st;
+  const video = $('#cam');
+  if (video.srcObject !== st) { video.srcObject = st; video.play().catch(() => {}); }
+  watchEnded(st);
+  updateCamBtn();
+  $('#startPanel').hidden = true;
+  $('#otherCamBtn').hidden = true;
+  const btn = $('#startBtn'); btn.disabled = false; btn.textContent = 'Start camera';
+  running = true; lastSeen = 0; resetTracking(); initWorker();
+  requestAnimationFrame(tick);
+}
+// Open one specific camera and check it really shows a picture. Returns the stream or null.
+async function tryCamera(constraints) {
+  let st;
+  try { st = await gumWithTimeout(constraints, 4000); } catch (e) { return { err: e }; }
+  const video = $('#cam');
+  video.srcObject = st; video.play().catch(() => {});
+  if (await waitForFrames(video, 3500)) return { st };
+  st.getTracks().forEach(t => t.stop()); video.srcObject = null;
+  return { err: { name: 'NoFrames' } };
+}
+
+async function startCamera() {
+  const btn = $('#startBtn'), msg = $('#startMsg');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    msg.textContent = "This browser can't use the camera here. If you opened this from inside another app (e.g. Google Slides), use its menu to 'Open in browser' (Safari or Chrome), and make sure the address starts with https://";
+    return;
+  }
+  const my = ++camAttempt;
+  btn.disabled = true; btn.textContent = 'Starting…';
+  msg.textContent = 'Allow camera access if your phone asks.';
+  const video = $('#cam');
+  const deadline = performance.now() + 60000;
+  let noPicture = 0;
+  while (my === camAttempt) {
+    let err = null, st = null;
+    try { st = await openCamera(noPicture); } catch (e) { err = e; }
+    if (my !== camAttempt) { if (st) st.getTracks().forEach(t => t.stop()); return; }
+    if (st) {
+      video.srcObject = st; video.play().catch(() => {});
+      if (await waitForFrames(video, 3500)) {
+        if (my !== camAttempt) { st.getTracks().forEach(t => t.stop()); return; }
+        goLive(st);
+        return;
+      }
+      st.getTracks().forEach(t => t.stop()); video.srcObject = null;
+      err = { name: 'NoFrames' };
+    }
+    if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+      msg.textContent = 'Camera access was blocked. Allow the camera for this site in your browser settings, then tap Start camera.';
+      break;
+    }
+    if (err.name === 'NotFoundError') { msg.textContent = 'No camera was found on this device.'; break; }
+    if (err.name === 'NoFrames' || err.name === 'TimeoutError') {
+      // That camera gave no picture: forget it if it was the saved choice, and try the next one.
+      noPicture++;
+      if (savedCam()) saveCam('');
+    }
+    $('#otherCamBtn').hidden = false;
+    if (performance.now() > deadline) {
+      msg.textContent = BUSY_MSG.replace('The camera will start by itself.', 'Then tap Start camera, or Try another camera.');
+      break;
+    }
+    msg.textContent = BUSY_MSG;
+    btn.textContent = 'Waiting for camera…';
+    await sleep(document.hidden ? 500 : 1500);
+  }
+  if (my === camAttempt) { btn.disabled = false; btn.textContent = 'Start camera'; }
+}
+
+// Step through the phone's cameras, skipping any that give no picture.
+let camCursor = -1;
+async function cycleCamera(fromHud) {
+  const msg = $('#startMsg');
+  camAttempt++; // stop any waiting loop
+  const cams = await videoCams();
+  if (!cams.length || !cams[0].deviceId) { // labels/ids not available yet: just start normally
+    if (!fromHud) startCamera();
+    return;
+  }
+  const cur = stream && stream.getVideoTracks()[0] ? stream.getVideoTracks()[0].getSettings().deviceId : null;
+  if (cur) { const i = cams.findIndex(d => d.deviceId === cur); if (i >= 0) camCursor = i; }
+  if (stream) { running = false; stream.getTracks().forEach(t => t.stop()); stream = null; } // phones open one camera at a time
+  const my = camAttempt;
+  // From the start screen, try back cameras first; the Camera button just steps to the next one.
+  let order = cams.map((_, k) => (camCursor + 1 + k) % cams.length);
+  if (!fromHud) {
+    const back = i => /back|rear|environment/i.test(cams[i].label) ? 0 : 1;
+    order = order.sort((x, y) => back(x) - back(y));
+  }
+  for (const i of order) {
+    const cam = cams[i];
+    if (fromHud) showNote('Trying camera ' + (i + 1) + ' of ' + cams.length + '…'); else msg.textContent = 'Trying camera ' + (i + 1) + ' of ' + cams.length + '…';
+    const r = await tryCamera({ video: { deviceId: { exact: cam.deviceId }, ...RES }, audio: false });
+    if (my !== camAttempt) { if (r.st) r.st.getTracks().forEach(t => t.stop()); return; }
+    if (r.st) {
+      camCursor = i; saveCam(cam.deviceId);
+      goLive(r.st);
+      showNote('Camera ' + (i + 1) + ' of ' + cams.length + (cam.label ? ': ' + cam.label : ''));
+      return;
+    }
+  }
+  // None worked right now (probably still busy).
+  running = false;
+  $('#startPanel').hidden = false; $('#otherCamBtn').hidden = false;
+  msg.textContent = "Couldn't get a picture from any camera. " + BUSY_MSG.replace('The camera will start by itself.', 'Then tap Start camera.');
+}
+function stopCamera() {
+  running = false;
+  camAttempt++;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+}
+
+function initViewer() {
+  $('#startBtn').onclick = () => { unlockMedia(); startCamera(); };
+  $('#camBtn').onclick = () => cycleCamera(true);
+  $('#otherCamBtn').onclick = () => cycleCamera(false);
+  // Coming back from the camera app: try again straight away.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !$('#viewer').hidden && !running && $('#startBtn').disabled) { startCamera(); }
+  });
+  $('#holdBtn').onclick = () => {
+    held = !held;
+    $('#holdBtn').textContent = held ? 'Resume' : 'Hold';
+    if (held) $('#layer').classList.remove('lost');
+  };
+  $('#editBtn').onclick = async () => {
+    if (Array.isArray(scene) && scene.length && !packed) packed = await pack(scene);
+    location.hash = packed ? '#e=' + packed : '';
+  };
+}
+
+/* ---------- Routing ---------- */
+async function route() {
+  stopCamera();
+  const h = location.hash;
+  if (h.startsWith('#d=') || h === '#scan') {
+    $('#editor').hidden = true; $('#viewer').hidden = false;
+    document.body.style.overflow = 'hidden';
+    scene = null; packed = '';
+    if (h.startsWith('#d=')) {
+      try { packed = h.slice(3); const u = await unpack(packed); shapeIdx = u.shape; scene = u.els; }
+      catch (e) { $('#startMsg').textContent = "This scene link couldn't be read. " + (e.message.includes('older') ? e.message : 'It may be incomplete.'); }
+    }
+    held = false; $('#holdBtn').textContent = 'Hold';
+    $('#layer').style.visibility = 'hidden';
+    $('#startPanel').hidden = false;
+    buildLayer();
+  } else {
+    $('#viewer').hidden = true; $('#editor').hidden = false;
+    clearMedia();
+    document.body.style.overflow = '';
+    scene = [];
+    if (h.startsWith('#e=')) {
+      try { const u = await unpack(h.slice(3)); shapeIdx = u.shape; scene = u.els; }
+      catch (e) { alert("That scene link couldn't be read. " + (e.message.includes('older') ? e.message : '')); }
+    }
+    $('#shape').value = shapeIdx;
+    renderList();
+    updateExport();
+  }
+}
+
+initEditor();
+initViewer();
+addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>
