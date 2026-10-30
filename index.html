@@ -182,9 +182,8 @@
   #modelSheet .ms-wait { padding: 24px; text-align: center; font-size: 17px; color: #333; max-width: 520px; }
   #modelSheet .ms-hint { margin: 0; text-align: center; font-size: 15px; color: #444; padding: 4px 12px; }
   #modelSheet .ms-bar { display: flex; gap: 12px; justify-content: center; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); }
-  #modelSheet .ms-bar button, #modelSheet .ms-ar { min-height: 48px; padding: 6px 22px; border-radius: 999px; border: 2px solid #111; background: #fff; color: #111; font: 700 17px var(--ui); }
+  #modelSheet .ms-bar button { min-height: 48px; padding: 6px 22px; border-radius: 999px; border: 2px solid #111; background: #fff; color: #111; font: 700 17px var(--ui); }
   #modelSheet .ms-bar button.primary { background: #111; color: #fff; }
-  #modelSheet .ms-ar { position: absolute; top: 14px; right: 14px; background: var(--mark); }
   #modelSheet .ms-progress { position: absolute; top: 0; left: 0; height: 5px; width: 0; background: #111; transition: width .2s, opacity .4s; }
   #mediaSheet { position: fixed; inset: 0; z-index: 50; background: #000e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
   #mediaSheet[hidden] { display: none; }
@@ -554,8 +553,7 @@ const boot = (() => {
      Old links keep their layout so posters already printed from them still work.
    - Media items have a big tap-to-play button over the whole item (Drive/OneDrive open full-screen).
    - 3D models (.glb) use Google's <model-viewer>, downloaded only when a poster has one: shown on the
-     poster (optionally turning), and a tap opens them full-screen to turn, zoom and move with fingers,
-     with "View in your room" on phones that support it. Files come from resources/models/, any web
+     poster (optionally turning), and a tap opens them full-screen to turn, zoom and move with fingers. Files come from resources/models/, any web
      address that allows it, or Google Drive (through DRIVE_API_KEY, like sounds and video files).
    - Layers: items are drawn in scene order (later = in front); the editor's layer list and Layer
      buttons change the order.
@@ -853,6 +851,30 @@ const playMode = e => (e.f & OPEN) ? 'tab' : (e.f & FULL) ? 'full' : 'poster';
 // The reasons tell apart the usual causes: a network or account that blocks the host, a video format
 // this phone can't show (e.g. iPhone "HEVC" videos on many Android phones and Windows PCs), or a link
 // that doesn't give a video file.
+// Why couldn't a file (3D model, sound, video) be loaded? Asks for its first few bytes and reads the
+// answer. Google Drive explains refusals (e.g. the API key's website restriction).
+async function whyFailed(url, kind) {
+  let r;
+  try { r = await fetch(url, { headers: { Range: 'bytes=0-15' } }); }
+  catch (e) { return "Couldn't reach the " + kind + " file. The network may block the site it's on, or that site doesn't let other sites use its files."; }
+  if (!r.ok) {
+    let why = '';
+    try { const j = await r.json(); why = (j.error && j.error.message) || ''; } catch (e) {}
+    if (/googleapis\.com/.test(url)) {
+      if (/referer|referrer/i.test(why) || r.status === 403 && /blocked/i.test(why))
+        return "Google Drive refused: the API key's website setting doesn't match. In Google Cloud, set the key's website to https://" + location.host + "/* (Safari only tells Google the site, not the page).";
+      if (r.status === 404) return "Google Drive can't find that file, or it isn't shared as \"Anyone with the link\".";
+      return 'Google Drive refused (' + r.status + ')' + (why ? ': ' + why : '') + '. Check the file is shared as "Anyone with the link".';
+    }
+    return 'The ' + kind + ' file couldn\'t be loaded (the site answered ' + r.status + ').';
+  }
+  try {
+    const b = new Uint8Array(await r.arrayBuffer());
+    if (b[0] === 60) return 'The link gave a web page, not the ' + kind + ' file. Use a direct link to the file.';   // "<"
+    if (kind === '3D model' && !(b[0] === 0x67 && b[1] === 0x6c && b[2] === 0x54 && b[3] === 0x46) && b[0] !== 123) return "That file isn't a .glb 3D model.";
+  } catch (e) {}
+  return kind === '3D model' ? "The file arrived, but this browser couldn't show it as a 3D model." : '';
+}
 function mediaTrouble(m, report) {
   m.addEventListener('error', async () => {
     // Browsers give the same error for "couldn't download" and "can't play this format", so try
@@ -870,6 +892,7 @@ function mediaTrouble(m, report) {
       browserAdvice(true);
       return;
     }
+    if (/googleapis\.com/.test(m.currentSrc || m.src)) { const w = await whyFailed(m.currentSrc || m.src, m.tagName === 'AUDIO' ? 'sound' : 'video'); if (w) { report(w, 'drive'); return; } }
     if (!reached) report("Couldn't reach the video: this network may block the site it's stored on (school Wi-Fi often blocks personal OneDrive). Try mobile data.", 'network');
     else report("The video downloads, but this phone can't play it: probably its format (videos from iPhones are often HEVC, which many Android phones and Windows PCs can't show), or the link gave a web page instead of the video.", 'format');
   });
@@ -995,7 +1018,7 @@ function makeEl(e, live) {
       el.setAttribute('shadow-intensity', '0.8');
       el.setAttribute('environment-image', 'neutral');
       if (e.f & AUTO) { el.dataset.spin = '1'; if (!live) el.setAttribute('auto-rotate', ''); el.setAttribute('auto-rotate-delay', '0'); el.setAttribute('rotation-per-second', '20deg'); }
-      el.addEventListener('error', () => { el.dataset.failed = '1'; fail("This 3D model couldn't be loaded."); });
+      el.addEventListener('error', () => { el.dataset.failed = '1'; whyFailed(fileSrc(e.url), '3D model').then(w => fail(w || "This 3D model couldn't be loaded.")); });
       const badge = document.createElement('div');
       badge.className = 'm-badge'; badge.style.fontSize = Math.max(10, Math.min(H * 0.07, W * 0.06)) + 'px';
       badge.innerHTML = '<svg aria-hidden="true"><use href="#i-m"/></svg>' + (live ? 'Tap to explore' : '3D');
@@ -1106,8 +1129,7 @@ function makeEl(e, live) {
 }
 
 
-// Full-screen 3D: drag to turn, pinch to zoom, two fingers to move; "View in your room" where the phone
-// supports it (Android: Scene Viewer or WebXR; iPhone/iPad: Quick Look).
+// Full-screen 3D: drag to turn, pinch to zoom, two fingers to move.
 function openModelSheet(e) {
   let sh = $('#modelSheet');
   if (!sh) {
@@ -1124,13 +1146,14 @@ function openModelSheet(e) {
     const mv = document.createElement('model-viewer');
     const set = { src: fileSrc(e.url), alt: '3D model', 'camera-orbit': orbitOf(e), 'camera-controls': '', 'touch-action': 'none',
       'interaction-prompt': 'auto', 'shadow-intensity': '1', 'environment-image': 'neutral', 'auto-rotate': '', 'auto-rotate-delay': '1500',
-      ar: '', 'ar-modes': 'webxr scene-viewer quick-look', 'min-camera-orbit': 'auto auto 5%', 'max-camera-orbit': 'auto auto 300%' };
+      'min-camera-orbit': 'auto auto 5%', 'max-camera-orbit': 'auto auto 300%' };
     for (const k in set) mv.setAttribute(k, set[k]);
-    const arBtn = document.createElement('button'); arBtn.slot = 'ar-button'; arBtn.className = 'ms-ar'; arBtn.textContent = 'View in your room';
-    mv.appendChild(arBtn);
     const bar = document.createElement('div'); bar.slot = 'progress-bar'; bar.className = 'ms-progress'; mv.appendChild(bar);
     mv.addEventListener('progress', ev => { bar.style.width = (ev.detail.totalProgress * 100) + '%'; bar.style.opacity = ev.detail.totalProgress >= 1 ? 0 : 1; });
-    mv.addEventListener('error', () => { stage.innerHTML = '<p class="ms-wait">This 3D model couldn\'t be loaded. It needs to be a .glb or .gltf file, on a site that lets other sites use its files (e.g. this site\'s ' + MODEL_DIR + ' folder).</p>'; });
+    mv.addEventListener('error', () => {
+      stage.innerHTML = '<p class="ms-wait">This 3D model couldn\'t be loaded. Finding out why…</p>';
+      whyFailed(fileSrc(e.url), '3D model').then(w => { const pEl = stage.querySelector('.ms-wait'); if (pEl) pEl.textContent = w || "This 3D model couldn't be loaded."; });
+    });
     stage.innerHTML = ''; stage.appendChild(mv);
     sh.querySelector('[data-ms=reset]').onclick = () => { mv.cameraOrbit = orbitOf(e); mv.cameraTarget = 'auto auto auto'; mv.fieldOfView = 'auto'; mv.jumpCameraToGoal(); };
   }, () => { stage.innerHTML = '<p class="ms-wait">The 3D viewer couldn\'t be loaded. Check the internet connection.</p>'; });
@@ -1253,7 +1276,7 @@ const prettyName = n => n.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
 
 /* ---------- 3D models ----------
    Shown with Google's <model-viewer> (free, open source): touch to turn, pinch to zoom, two fingers to
-   move, and on phones that support it, "View in your room" (Android Scene Viewer / iPhone Quick Look).
+   move.
    It's big (about 1 MB), so it is only downloaded when a poster has a 3D model. */
 const MV_URL = "https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer.min.js";
 let mvLoad = null;
