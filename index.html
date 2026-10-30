@@ -277,7 +277,15 @@
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
   /* ---------- Viewer ---------- */
-  #viewer { position: fixed; inset: 0; background: #000; overflow: hidden; font-family: var(--ui); }
+  #viewer { position: fixed; inset: 0; background: #000; overflow: hidden; overflow: clip; font-family: var(--ui); }   /* clip: it can never be scrolled (e.g. by focusing an item) */
+  /* Aiming guide while looking for the poster: an outline of the whole poster to line it up with. */
+  #guide { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; pointer-events: none; z-index: 2; padding: 70px 16px 90px; }
+  #guide[hidden] { display: none; }
+  #guideSvg { width: min(78vw, 100%); max-height: min(62vh, 100%); overflow: visible; filter: drop-shadow(0 0 6px #000a); }
+  #guideSvg .br { animation: guide-pulse 1.6s ease-in-out infinite; }
+  @keyframes guide-pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { #guideSvg .br { animation: none; } }
+  #guideMsg { margin: 0; max-width: 340px; text-align: center; color: #fff; font: 700 17px/1.35 var(--ui); background: #000000b0; padding: 8px 14px; border-radius: 12px; }
   #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   #layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; visibility: hidden; transition: opacity .3s; }
   #layer.lost { opacity: .4; }
@@ -497,6 +505,7 @@ const boot = (() => {
 <div id="viewer" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <div id="layer"></div>
+  <div id="guide" hidden aria-hidden="true"><svg id="guideSvg"></svg><p id="guideMsg"></p></div>
   <div id="hud">
     <span id="status" aria-live="polite">Starting…</span>
     <button id="holdBtn">Hold</button>
@@ -974,8 +983,10 @@ function makeEl(e, live) {
     else {
       // On the poster: the model as a picture that can turn slowly by itself. A tap opens it full-screen
       // to turn and zoom with fingers (fiddly on a moving poster, and it would fight the tracking).
-      ensureModelViewer().catch(() => {});
       el = document.createElement('model-viewer');
+      // If the 3D viewer can't run here, or the model can't be loaded, say so on the item.
+      const fail = msg => { if (live) showTrouble(wrap, msg, '3d', null, W, H); };
+      ensureModelViewer().catch(() => fail("This browser couldn't start the 3D viewer. Updating the phone's software may help."));
       el.className = 'el-model';
       el.setAttribute('src', fileSrc(e.url));
       el.setAttribute('camera-orbit', orbitOf(e));
@@ -984,7 +995,7 @@ function makeEl(e, live) {
       el.setAttribute('shadow-intensity', '0.8');
       el.setAttribute('environment-image', 'neutral');
       if (e.f & AUTO) { el.dataset.spin = '1'; if (!live) el.setAttribute('auto-rotate', ''); el.setAttribute('auto-rotate-delay', '0'); el.setAttribute('rotation-per-second', '20deg'); }
-      el.addEventListener('error', () => { el.dataset.failed = '1'; });
+      el.addEventListener('error', () => { el.dataset.failed = '1'; fail("This 3D model couldn't be loaded."); });
       const badge = document.createElement('div');
       badge.className = 'm-badge'; badge.style.fontSize = Math.max(10, Math.min(H * 0.07, W * 0.06)) + 'px';
       badge.innerHTML = '<svg aria-hidden="true"><use href="#i-m"/></svg>' + (live ? 'Tap to explore' : '3D');
@@ -1250,13 +1261,15 @@ function ensureModelViewer() {
   if (customElements.get('model-viewer')) return Promise.resolve();
   if (!mvLoad) {
     const t = document.body.classList.contains('booting') ? boot.task(4) : null;   // counts on the loading screen
-    mvLoad = fetch(MV_URL).then(async r => {
-      if (!r.ok || !r.body) throw new Error('fetch');
-      const reader = r.body.getReader(), parts = []; let got = 0;
-      for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; if (t) t.progress(Math.min(0.95, got / 980000)); }
-      return import(URL.createObjectURL(new Blob(parts, { type: 'text/javascript' })));
-    }).catch(() => import(MV_URL))
-      .then(() => { if (t) t.done(); }, err => { if (t) t.done(); mvLoad = null; throw err; });
+    // Download it once with a progress count (this also puts it in the browser's cache), then load it
+    // the normal way (the most widely supported way of loading this kind of code).
+    const warm = !t ? Promise.resolve() : fetch(MV_URL).then(async r => {
+      if (!r.ok || !r.body) return;
+      const reader = r.body.getReader(); let got = 0;
+      for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; t.progress(Math.min(0.9, got / 980000)); }
+    }).catch(() => {});
+    mvLoad = warm.then(() => import(new URL(MV_URL, location.href).href)).then(() => customElements.whenDefined('model-viewer'))
+      .then(() => { if (t) t.done(); }, err => { if (t) t.done(); mvLoad = null; mediaIssues.push({ t: Math.round(performance.now()), code: '3d-viewer', msg: String(err && err.message || err).slice(0, 80) }); throw err; });
   }
   return mvLoad;
 }
@@ -3575,6 +3588,7 @@ function tick() {
   }
   if (now - rateT >= 1000) { rate = Math.round(detCount * 1000 / (now - rateT || 1)); detCount = 0; rateT = now; }
   const layer = $('#layer');
+  showGuide(!held && (!lastSeen || now - lastSeen > 700), now);
   if (now < noteUntil) setStatus(note);
   else if (held) setStatus('Holding position — tap Resume to track again.');
   else if (!lastSeen) setStatus(Array.isArray(scene) ? 'Looking for the poster…' : 'Point at the QR code on a poster.');
@@ -3622,6 +3636,41 @@ function spinModels(on) {
   if (on === modelsSpinning) return;
   modelsSpinning = on;
   $('#layer').querySelectorAll('model-viewer[data-spin]').forEach(m => { if (on) m.setAttribute('auto-rotate', ''); else m.removeAttribute('auto-rotate'); });
+}
+
+// The aiming guide: an outline of the whole poster (its shape, black frame and QR corner), shown while
+// looking for it, so people step back to fit the whole poster in instead of zooming in on the QR code.
+let guideShape = null, guideOn = false, searchSince = 0;
+function drawGuide() {
+  const known = Array.isArray(scene), key = (known ? shapeIdx : 0) + ':' + layout;
+  if (guideShape === key) return;
+  guideShape = key;
+  const keep = shapeIdx; if (!known) shapeIdx = 0;
+  const g = geo(); shapeIdx = keep;
+  const M = g.M, W = 1 + 2 * M, H = g.Hf + 2 * M, T = g.T, C = g.C, k = 0.09 * Math.min(1, g.Hf);   // k: bracket length
+  const q = g.qr, cells = [];
+  // A few squares suggesting the QR code (its three corner markers).
+  for (const [cx, cy] of [[0, 0], [1, 0], [0, 1]]) { const s = q.s * 0.3; cells.push(`<rect x="${q.x + q.s * 0.06 + cx * q.s * 0.58}" y="${q.y + q.s * 0.06 + cy * q.s * 0.58}" width="${s}" height="${s}" fill="none" stroke="#fff" stroke-width="${s * 0.22}"/>`); }
+  const br = (x, y, dx, dy) => `<path class="br" d="M${x + dx * k} ${y}H${x}V${y + dy * k}" fill="none" stroke="#ffe53b" stroke-width="${0.018}" stroke-linecap="round"/>`;
+  $('#guideSvg').setAttribute('viewBox', `${-M - 0.03} ${-M - 0.03} ${W + 0.06} ${H + 0.06}`);
+  $('#guideSvg').innerHTML =
+    `<rect x="${-M}" y="${-M}" width="${W}" height="${H}" fill="#ffffff14" stroke="#ffffffb0" stroke-width="0.006" stroke-dasharray="0.02 0.015"/>` +
+    // the black frame (drawn white so it shows over the camera), with the QR corner cut out
+    `<path d="M0 0H1V${g.Hf}H${C}V${g.Hf - C}H0Z M${T} ${T}V${g.Hf - C - 0.0001}H${C}V${g.Hf - T}H${1 - T}V${T}Z" fill="#ffffffd9" fill-rule="evenodd"/>` +
+    cells.join('') +
+    br(-M, -M, 1, 1) + br(1 + M, -M, -1, 1) + br(1 + M, g.Hf + M, -1, -1) + br(-M, g.Hf + M, 1, -1);
+}
+function showGuide(on, now) {
+  const open = id => { const n = document.getElementById(id); return n && !n.hidden; };
+  on = on && running && $('#startPanel').hidden && !open('modelSheet') && !open('mediaSheet');
+  if (on && !guideOn) searchSince = now;
+  if (on !== guideOn) { guideOn = on; $('#guide').hidden = !on; }
+  if (!on) return;
+  drawGuide();
+  const long = now - searchSince > 6000;
+  $('#guideMsg').textContent = !Array.isArray(scene) ? 'Point at the QR code in the poster\'s corner.'
+    : long ? 'Step back so the whole black frame is in view. Close up on the QR code isn\'t enough.'
+    : 'Fit the whole poster inside the outline.';
 }
 // getUserMedia that gives up after ms; if the camera arrives late, it is released again.
 function gumWithTimeout(c, ms) {
@@ -3775,6 +3824,7 @@ async function cycleCamera(fromHud) {
 }
 function stopCamera() {
   running = false;
+  guideOn = false; $('#guide').hidden = true;
   stopFrameReader();
   camAttempt++;
   if (stream) stream.getTracks().forEach(t => t.stop());
