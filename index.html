@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Send the page address (not just the site) with requests to other sites, so a Google API key
+     restricted to this page's address (…github.io/ar_poster/*) accepts them. -->
+<meta name="referrer" content="no-referrer-when-downgrade">
 <title>Poster AR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
   :root {
     color-scheme: light;
@@ -30,6 +31,25 @@
   * { box-sizing: border-box; }
   body { margin: 0; font: 16px/1.5 var(--ui); color: var(--ink); background: var(--desk); }
   button, input, select, textarea { font: inherit; color: inherit; }
+  /* Loading screen */
+  #boot { position: fixed; inset: 0; z-index: 5000; display: flex; align-items: center; justify-content: center;
+    background: #1b2a24b3; transition: opacity .25s; cursor: progress; }
+  #boot[hidden] { display: none; }
+  #boot.done { opacity: 0; }
+  body.booting > :not(#boot):not(script) { filter: grayscale(1); opacity: .55; pointer-events: none; user-select: none; }
+  .boot-card { background: #fff; color: #111; border: 2px solid #111; border-radius: 18px; padding: 22px 30px 18px; min-width: 200px;
+    text-align: center; box-shadow: 0 10px 40px #0007; font-family: system-ui, sans-serif; }
+  .boot-glass { width: 54px; height: 54px; color: #111; animation: boot-flip 2.4s ease-in-out infinite; }
+  .boot-glass .sand-top { animation: boot-top 1.2s linear infinite; transform-origin: 24px 21px; }
+  .boot-glass .sand-bot { animation: boot-bot 1.2s linear infinite; transform-origin: 24px 40px; }
+  @keyframes boot-flip { 0%, 80% { transform: rotate(0); } 100% { transform: rotate(180deg); } }
+  @keyframes boot-top { from { transform: scaleY(1); } to { transform: scaleY(.15); } }
+  @keyframes boot-bot { from { transform: scaleY(.15); } to { transform: scaleY(1); } }
+  @media (prefers-reduced-motion: reduce) { .boot-glass, .boot-glass * { animation: none !important; } }
+  .boot-pct { font: 800 34px/1.1 system-ui, sans-serif; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  .boot-bar { height: 10px; border: 2px solid #111; border-radius: 99px; margin: 10px 0 8px; overflow: hidden; background: #f1f1ec; }
+  .boot-bar i { display: block; height: 100%; width: 0; background: #ffe53b; }
+  .boot-msg { margin: 0; font-size: 15px; color: #333; }
   :focus-visible { outline: 3px solid var(--mark-deep); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
@@ -104,7 +124,7 @@
   .stage-chip .btn { min-height: 32px; border-radius: 999px; }
 
   /* Overlay elements (shared by the editor stage and the AR viewer) */
-  .ar-el { position: absolute; touch-action: none; }
+  .ar-el { position: absolute; touch-action: none; isolation: isolate; }   /* each item is one layer: later items are in front */
   .ar-el > :first-child { width: 100%; height: 100%; }
   .ar-el img { display: block; border: 0; object-fit: fill; }
   .ar-el video, .ar-el iframe { display: block; border: 0; background: #000; }
@@ -147,6 +167,25 @@
   .tap .tap-bar { position: absolute; left: 0; bottom: 0; height: 4%; min-height: 3px; background: #ffffffd0; width: 0; pointer-events: none; }
   .ar-el .unmute { z-index: 3; }
   .audio-card { background: linear-gradient(135deg, #1f2b3a, #33465e); border-radius: .25em; }
+  /* 3D models */
+  .ar-el model-viewer.el-model { width: 100%; height: 100%; display: block; background: transparent; pointer-events: none; --poster-color: transparent; --progress-bar-color: transparent; }
+  .ar-el.tappable { cursor: pointer; }
+  .m-pick { height: 220px; border: 2px solid var(--line, #111); border-radius: 12px; background: radial-gradient(circle at 50% 40%, #fff, #e4e8e5); overflow: hidden; }
+  .m-pick model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
+  .m-badge { position: absolute; left: 50%; bottom: 3%; transform: translateX(-50%); display: flex; align-items: center; gap: .35em; white-space: nowrap;
+    background: #000000b3; color: #fff; border-radius: 999px; padding: .25em .8em; font-weight: 700; pointer-events: none; }
+  .m-badge svg { width: 1.2em; height: 1.2em; }
+  #modelSheet { position: fixed; inset: 0; z-index: 60; background: radial-gradient(circle at 50% 40%, #ffffff, #dfe4e1); display: flex; flex-direction: column; }
+  #modelSheet[hidden] { display: none; }
+  #modelSheet .ms-stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; }
+  #modelSheet model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
+  #modelSheet .ms-wait { padding: 24px; text-align: center; font-size: 17px; color: #333; max-width: 520px; }
+  #modelSheet .ms-hint { margin: 0; text-align: center; font-size: 15px; color: #444; padding: 4px 12px; }
+  #modelSheet .ms-bar { display: flex; gap: 12px; justify-content: center; padding: 10px 16px max(14px, env(safe-area-inset-bottom)); }
+  #modelSheet .ms-bar button, #modelSheet .ms-ar { min-height: 48px; padding: 6px 22px; border-radius: 999px; border: 2px solid #111; background: #fff; color: #111; font: 700 17px var(--ui); }
+  #modelSheet .ms-bar button.primary { background: #111; color: #fff; }
+  #modelSheet .ms-ar { position: absolute; top: 14px; right: 14px; background: var(--mark); }
+  #modelSheet .ms-progress { position: absolute; top: 0; left: 0; height: 5px; width: 0; background: #111; transition: width .2s, opacity .4s; }
   #mediaSheet { position: fixed; inset: 0; z-index: 50; background: #000e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
   #mediaSheet[hidden] { display: none; }
   #mediaSheet .sheet-media { width: min(100%, 960px); display: flex; justify-content: center; }
@@ -159,7 +198,8 @@
   #pvLayer .ar-el { cursor: grab; }
   #pvLayer .ar-el > :not(.hd) { pointer-events: none; }
   #pvLayer .ar-el:hover { outline: var(--hov) solid #ffffffb0; }
-  #pvLayer .ar-el.sel { outline: var(--sw) solid var(--mark); box-shadow: 0 0 0 calc(var(--sw) * 2) #000; }
+  .ar-sel { position: absolute; outline: var(--sw) solid var(--mark); box-shadow: 0 0 0 calc(var(--sw) * 2) #000; cursor: move; touch-action: none; }
+  #preview.posterMode .ar-sel { display: none; }
   .hd { position: absolute; width: var(--hs); height: var(--hs); background: var(--mark); border: var(--hb) solid #000; border-radius: 2px; z-index: 5; }
   .hd.nw { left: 0; top: 0; transform: translate(-50%,-50%); cursor: nwse-resize; }
   .hd.n  { left: 50%; top: 0; transform: translate(-50%,-50%); cursor: ns-resize; }
@@ -196,7 +236,15 @@
   .tile small { display: block; font-weight: 400; font-size: 12px; line-height: 1.25; color: var(--muted, #555); }
 
   .layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-  .layers li button { width: 100%; display: flex; gap: 10px; align-items: center; padding: 6px 10px; border: 2px solid transparent; border-radius: var(--radius); background: #f4f5f2; cursor: pointer; text-align: left; }
+  .layers li { display: flex; gap: 4px; align-items: stretch; position: relative; transition: transform .12s; }
+  .layers li.dragging { transition: none; z-index: 2; box-shadow: 0 6px 18px #0003; border-radius: var(--radius); }
+  .layers .grip { flex: none; width: 30px; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; user-select: none;
+    font-size: 18px; color: #666; border-radius: var(--radius); background: #f4f5f2; }
+  .layers .grip:hover { color: #000; background: #e9ebe6; }
+  .layers-head { margin: 10px 0 6px; font-size: 14px; color: #555; }
+  .layer-row .btn { padding-left: 10px; padding-right: 10px; }
+  .layer-row .btn:disabled { opacity: .4; cursor: default; }
+  .layers li button { flex: 1; min-width: 0; width: 100%; display: flex; gap: 10px; align-items: center; padding: 6px 10px; border: 2px solid transparent; border-radius: var(--radius); background: #f4f5f2; cursor: pointer; text-align: left; }
   .layers li button svg { width: 18px; height: 18px; flex: none; }
   .layers li button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .layers li button.on { border-color: var(--line); background: var(--mark); }
@@ -249,7 +297,96 @@
   #startPanel #otherCamBtn { background: transparent; color: #fff; border-color: #fff; font-size: 16px; min-height: 44px; }
 </style>
 </head>
-<body>
+<body class="booting">
+
+<!-- Loading screen: covers (and greys out) the page until everything needed has arrived. -->
+<div id="boot" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+  <div class="boot-card">
+    <svg class="boot-glass" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M12 5h24M12 43h24" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M14 5c0 10 7 13 10 19-3 6-10 9-10 19h20c0-10-7-13-10-19 3-6 10-9 10-19" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+      <path class="sand-top" d="M17 10h14c-1 5-5 8-7 11-2-3-6-6-7-11z" fill="currentColor"/>
+      <path class="sand-bot" d="M24 31c-3 3-7 5-7 9h14c0-4-4-6-7-9z" fill="currentColor"/>
+    </svg>
+    <div class="boot-pct">0%</div>
+    <div class="boot-bar"><i></i></div>
+    <p class="boot-msg">Loading Poster AR…</p>
+  </div>
+</div>
+<script>
+/* Loading screen. Tasks (the code libraries, fonts, then the poster's videos and pictures) each report
+   progress from 0 to 1; the screen shows the weighted total and goes once everything is ready
+   (or after a time limit, so a blocked site can never leave it stuck). Runs before the main code,
+   so the libraries start downloading straight away. */
+const boot = (() => {
+  const el = document.getElementById('boot'), pct = el.querySelector('.boot-pct'), bar = el.querySelector('.boot-bar i'), msg = el.querySelector('.boot-msg');
+  let tasks = [], shown = 0, raf = 0, ending = false, limit = 0, onEnd = null;
+  const total = () => { let w = 0, p = 0; tasks.forEach(t => { w += t.w; p += t.w * t.p; }); return w ? p / w : 0; };
+  function draw() {
+    raf = 0;
+    const target = total();
+    shown += Math.max(0.004, (target - shown) * 0.2);         // glide towards the real figure
+    if (shown > target) shown = target;
+    const v = Math.floor(shown * 100);
+    pct.textContent = v + '%'; bar.style.width = (shown * 100) + '%'; el.setAttribute('aria-valuenow', v);
+    if (shown < target) raf = requestAnimationFrame(draw);
+    else if (ending && target >= 1) finish();
+  }
+  const kick = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  function finish() {
+    if (el.hidden) return;
+    clearTimeout(limit); ending = false;
+    document.body.classList.remove('booting');
+    document.querySelectorAll('[data-boot-inert]').forEach(n => { n.inert = false; n.removeAttribute('data-boot-inert'); });
+    el.classList.add('done'); setTimeout(() => { el.hidden = true; el.classList.remove('done'); }, 250);
+    if (onEnd) { const f = onEnd; onEnd = null; f(); }
+  }
+  const api = {
+    // Show the screen (again) with a message; everything else can't be clicked or tabbed to meanwhile.
+    show(text) {
+      tasks = []; shown = 0; ending = false; el.hidden = false; msg.textContent = text || 'Loading…';
+      document.body.classList.add('booting');
+      for (const n of document.body.children) if (n !== el && n.tagName !== 'SCRIPT' && !n.inert) { n.inert = true; n.setAttribute('data-boot-inert', ''); }
+      kick();
+    },
+    task(w = 1) {
+      const t = { w, p: 0 }; tasks.push(t); kick();
+      return { progress(p) { if (p > t.p) { t.p = Math.min(1, p); kick(); } }, done() { this.progress(1); } };
+    },
+    // Wait for a promise, but never longer than `ms`.
+    wait(promise, w = 1, ms = 8000) {
+      const t = api.task(w); let timer;
+      return Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(r => { timer = setTimeout(r, ms); })])
+        .then(() => { clearTimeout(timer); t.done(); });
+    },
+    // No more tasks: go when they're all done (at most `ms` from now).
+    end(ms = 15000, then) { ending = true; onEnd = then || null; clearTimeout(limit); limit = setTimeout(finish, ms); kick(); },
+    // A code library, downloaded with progress (size: roughly how big it is, for the percentage),
+    // then run. If downloading it that way fails, the browser fetches it normally instead.
+    lib(url, size, w) {
+      const t = api.task(w);
+      const run = text => new Promise((res, rej) => {
+        const s = document.createElement('script');
+        if (text != null) { s.text = text; document.head.appendChild(s); res(text); return; }
+        s.src = url; s.onload = () => res(null); s.onerror = rej; document.head.appendChild(s);
+      });
+      return fetch(url).then(async r => {
+        if (!r.ok || !r.body) throw new Error('fetch');
+        const reader = r.body.getReader(), parts = []; let got = 0;
+        for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; t.progress(Math.min(0.97, got / size)); }
+        return new TextDecoder().decode(await new Blob(parts).arrayBuffer());
+      }).then(run, () => run(null)).then(text => { t.done(); return text; }, () => { t.done(); return null; });
+    }
+  };
+  api.show('Loading Poster AR…');
+  api.libs = Promise.all([
+    api.lib("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js", 257000, 6),
+    api.lib("https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js", 21000, 1)
+  ]).then(([jsqrText]) => { api.jsqrText = jsqrText; });
+  api.wait(document.fonts ? document.fonts.ready : null, 1, 4000);
+  return api;
+})();
+</script>
 
 <!-- Icons -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -258,6 +395,7 @@
     <symbol id="i-t" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-b" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
     <symbol id="i-l" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-m" viewBox="0 0 24 24"><path d="M12 2.8l8.2 4.6v9.2L12 21.2l-8.2-4.6V7.4z M3.8 7.4L12 12l8.2-4.6 M12 12v9.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="2" fill="currentColor"/><path d="M4 18l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-y" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 9v6l5-3z" fill="currentColor"/></symbol>
     <symbol id="i-v" viewBox="0 0 24 24"><rect x="2.5" y="6" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 10l6-3v10l-6-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
@@ -324,6 +462,7 @@
         <div class="body">
           <div id="inspector" class="inspector" hidden></div>
           <div class="palette" id="palette"></div>
+          <p class="layers-head" id="layersHead" hidden>Layers, top first. Drag ⠿ to change which is in front.</p>
           <ul class="layers" id="list"></ul>
           <p class="hint" id="layersEmpty">Pick something above. It appears on your poster, ready to drag, resize and fill in.</p>
           <button class="btn ghost" id="sampleBtn">Load an example</button>
@@ -405,6 +544,12 @@
    - Links carry a layout number (the QR size, see CUT): 7 = current, 3 to 6 = earlier posters.
      Old links keep their layout so posters already printed from them still work.
    - Media items have a big tap-to-play button over the whole item (Drive/OneDrive open full-screen).
+   - 3D models (.glb) use Google's <model-viewer>, downloaded only when a poster has one: shown on the
+     poster (optionally turning), and a tap opens them full-screen to turn, zoom and move with fingers,
+     with "View in your room" on phones that support it. Files come from resources/models/, any web
+     address that allows it, or Google Drive (through DRIVE_API_KEY, like sounds and video files).
+   - Layers: items are drawn in scene order (later = in front); the editor's layer list and Layer
+     buttons change the order.
 
    SOURCE: this file is built from the parts in src/ by build.py (edit the parts, then build).
 
@@ -435,7 +580,7 @@ const $ = s => document.querySelector(s);
 // restrict the key to the Drive API and to this site's address (e.g. https://YOURNAME.github.io/*),
 // then paste it here. Videos must be shared with "Anyone with the link". Without a key, Drive videos
 // play in Google's own player, which can't be started automatically.
-const DRIVE_API_KEY = '';
+const DRIVE_API_KEY = 'AIzaSyCxm18OpGYyXjBOMU4UIMlp9FQWC7-Risw';
 const UNIT = 1000; // layer pixels per poster-frame width
 
 /* ---------- Poster shapes and frame geometry (all in frame widths) ---------- */
@@ -486,9 +631,10 @@ const TYPES = {
   // Text links are no longer offered (a button does the same); older links still show them.
   l: { name: 'Text link', sub: 'Underlined words that open a web page', w: 0.4, h: 0.045, text: true, url: 'Link address', keep: false, hidden: true },
   i: { name: 'Picture', sub: 'A photo, drawing or GIF from the web', w: 0.32, h: 0.24, url: 'Picture address (PNG, JPG or GIF online)', keep: true },
+  m: { name: '3D model', sub: 'A 3D model people can turn and zoom with their fingers (.glb)', w: 0.4, h: 0.4, url: '3D model address (.glb or .gltf)', keep: true, opts: ['spin'] },
   y: { name: 'YouTube video', sub: 'Plays a YouTube video, or just its sound', w: 0.52, h: 0.2925, url: 'YouTube link', keep: true, opts: ['play', 'audio', 'auto'] },
-  v: { name: 'Video file', sub: 'An .mp4 or .webm video with its own web address', w: 0.52, h: 0.2925, url: 'Video file address (.mp4 or .webm)', keep: true, opts: ['play', 'auto', 'loop'] },
-  a: { name: 'Sound file', sub: 'An .mp3 or other sound, e.g. a spoken explanation', w: 0.46, h: 0.075, url: 'Sound file address (.mp3 etc.)', keep: false, opts: ['auto'] },
+  v: { name: 'Video file', sub: 'An .mp4 or .webm video with its own web address', w: 0.52, h: 0.2925, url: 'Video file address (.mp4 or .webm), or a Google Drive share link', keep: true, opts: ['play', 'auto', 'loop'] },
+  a: { name: 'Sound file', sub: 'An .mp3 or other sound, e.g. a spoken explanation', w: 0.46, h: 0.075, url: 'Sound file address (.mp3 etc.), or a Google Drive share link', keep: false, opts: ['auto'] },
   g: { name: 'Google Drive video', sub: 'A video shared from your Google Drive', w: 0.52, h: 0.2925, url: 'Google Drive share link', keep: true, opts: ['play', 'auto', 'loop'], f: 128 },
   o: { name: 'OneDrive video', sub: 'A video shared from OneDrive or school SharePoint', w: 0.52, h: 0.2925, url: 'OneDrive share link, or its embed code', keep: true, opts: ['play', 'auto', 'loop'], f: 128 },
 };
@@ -502,6 +648,7 @@ const OPTS = {
   btn: { choice: true },
   audio: { bit: AUDIO, label: 'Sound only (shows a play button instead of the video). YouTube asks for players to stay visible, so use this sparingly.' },
   loop: { bit: LOOP, label: 'Play on repeat' },
+  spin: { bit: AUTO, label: 'Turns slowly on the poster (on older phones this can make the tracking a little less smooth)' },
   auto: { bit: AUTO, label: 'Start playing when the poster is found (may start muted with a "Tap for sound" button)' },
 };
 // When a video is tapped. Full-screen gives normal-sized controls; Google Drive and OneDrive players
@@ -586,6 +733,7 @@ async function pack(sc) {
     const f = e.f ? [e.f] : [];
     if (e.t === 'y') return [...base, ytId(e.url), ...f];
     if (e.t === 'g') return [...base, driveId(e.url), ...f];
+    if (e.t === 'm' && e.o) return [...base, e.url || '', e.f || 0, e.o[0], e.o[1]];
     return [...base, e.url || '', ...f];
   });
   const bytes = new TextEncoder().encode(JSON.stringify([CUT[layout] ? Math.max(3, layout) : LAYOUT_NOW, shapeIdx, arr]));
@@ -609,7 +757,7 @@ async function unpack(str) {
     else if (e.t === 't') { e.txt = rest[0] || ''; e.f = rest[1] | 0; }
     else if (e.t === 'y') { e.url = 'https://youtu.be/' + rest[0]; e.f = rest[1] | 0; }
     else if (e.t === 'g') { e.url = 'https://drive.google.com/file/d/' + rest[0] + '/view'; e.f = rest[1] | 0; }
-    else { e.url = rest[0]; e.f = rest[1] | 0; }
+    else { e.url = rest[0]; e.f = rest[1] | 0; if (e.t === 'm' && rest.length >= 4) e.o = [+rest[2] || 0, +rest[3] || 75]; }
     if (e.f) e.f &= (AUTO | OPEN | AUDIO | LOOP | FULL | LOOK | SOUND); // ignore settings from the see-through video experiment
     if (ver === 2) { // old single size -> box
       const s = e.s, n = (e.txt || '').length || 6;
@@ -803,7 +951,7 @@ function makeEl(e, live) {
         let snd = null;
         el.onclick = ev => {
           ev.stopPropagation();
-          if (!snd) { snd = new Audio(e.url); snd.addEventListener('ended', () => show(false)); snd.addEventListener('pause', () => show(false)); snd.addEventListener('play', () => show(true)); }
+          if (!snd) { snd = new Audio(fileSrc(e.url)); snd.addEventListener('ended', () => show(false)); snd.addEventListener('pause', () => show(false)); snd.addEventListener('play', () => show(true)); }
           if (snd.paused) { snd.currentTime = snd.ended ? 0 : snd.currentTime; snd.play().catch(() => {}); } else snd.pause();
         };
       }
@@ -821,6 +969,28 @@ function makeEl(e, live) {
   } else if (e.t === 'i') {
     if (!e.url) el = placeholder('Image: add its address');
     else { el = document.createElement('img'); el.src = e.url; el.alt = ''; }
+  } else if (e.t === 'm') {
+    if (!e.url) el = placeholder('3D model: add its address');
+    else {
+      // On the poster: the model as a picture that can turn slowly by itself. A tap opens it full-screen
+      // to turn and zoom with fingers (fiddly on a moving poster, and it would fight the tracking).
+      ensureModelViewer().catch(() => {});
+      el = document.createElement('model-viewer');
+      el.className = 'el-model';
+      el.setAttribute('src', fileSrc(e.url));
+      el.setAttribute('camera-orbit', orbitOf(e));
+      el.setAttribute('interaction-prompt', 'none');
+      el.setAttribute('loading', 'eager');
+      el.setAttribute('shadow-intensity', '0.8');
+      el.setAttribute('environment-image', 'neutral');
+      if (e.f & AUTO) { el.dataset.spin = '1'; if (!live) el.setAttribute('auto-rotate', ''); el.setAttribute('auto-rotate-delay', '0'); el.setAttribute('rotation-per-second', '20deg'); }
+      el.addEventListener('error', () => { el.dataset.failed = '1'; });
+      const badge = document.createElement('div');
+      badge.className = 'm-badge'; badge.style.fontSize = Math.max(10, Math.min(H * 0.07, W * 0.06)) + 'px';
+      badge.innerHTML = '<svg aria-hidden="true"><use href="#i-m"/></svg>' + (live ? 'Tap to explore' : '3D');
+      after.push(() => wrap.appendChild(badge));
+      if (live) { wrap.classList.add('tappable'); wrap.onclick = ev => { ev.stopPropagation(); openModelSheet(e); }; }
+    }
   } else if (e.t === 'y') {
     const id = ytId(e.url), how = playMode(e);
     const thumb = () => { const d = document.createElement('div'); d.className = 'yt'; d.style.backgroundImage = `url(https://img.youtube.com/vi/${id}/hqdefault.jpg)`; d.style.fontSize = Math.min(H, W) * 0.08 + 'px'; return d; };
@@ -859,7 +1029,7 @@ function makeEl(e, live) {
     }
   } else if (e.t === 'v' || e.t === 'a') {
     if (!e.url) el = placeholder(e.t === 'v' ? 'Video: add its address' : 'Audio: add its address');
-    else el = mediaFile(e, e.url, e.t === 'a', live, W, H, wrap, after);
+    else el = mediaFile(e, fileSrc(e.url), e.t === 'a', live, W, H, wrap, after);
   } else if (e.t === 'o') {
     const od = oneDriveSource(e.url), how = playMode(e);
     if (!od) el = placeholder('OneDrive: paste a link');
@@ -924,6 +1094,36 @@ function makeEl(e, live) {
   return wrap;
 }
 
+
+// Full-screen 3D: drag to turn, pinch to zoom, two fingers to move; "View in your room" where the phone
+// supports it (Android: Scene Viewer or WebXR; iPhone/iPad: Quick Look).
+function openModelSheet(e) {
+  let sh = $('#modelSheet');
+  if (!sh) {
+    sh = document.createElement('div'); sh.id = 'modelSheet'; sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-label', '3D model');
+    sh.innerHTML = '<div class="ms-stage"></div><p class="ms-hint">Drag to turn · Pinch to zoom · Two fingers to move</p>' +
+      '<div class="ms-bar"><button type="button" data-ms="reset">Reset view</button><button type="button" data-ms="close" class="primary">Close</button></div>';
+    sh.querySelector('[data-ms=close]').onclick = () => { sh.querySelector('.ms-stage').innerHTML = ''; sh.hidden = true; };
+    document.body.appendChild(sh);
+  }
+  const stage = sh.querySelector('.ms-stage'); stage.innerHTML = '<p class="ms-wait">Loading the 3D model…</p>';
+  sh.hidden = false;
+  ensureModelViewer().then(() => {
+    if (sh.hidden) return;
+    const mv = document.createElement('model-viewer');
+    const set = { src: fileSrc(e.url), alt: '3D model', 'camera-orbit': orbitOf(e), 'camera-controls': '', 'touch-action': 'none',
+      'interaction-prompt': 'auto', 'shadow-intensity': '1', 'environment-image': 'neutral', 'auto-rotate': '', 'auto-rotate-delay': '1500',
+      ar: '', 'ar-modes': 'webxr scene-viewer quick-look', 'min-camera-orbit': 'auto auto 5%', 'max-camera-orbit': 'auto auto 300%' };
+    for (const k in set) mv.setAttribute(k, set[k]);
+    const arBtn = document.createElement('button'); arBtn.slot = 'ar-button'; arBtn.className = 'ms-ar'; arBtn.textContent = 'View in your room';
+    mv.appendChild(arBtn);
+    const bar = document.createElement('div'); bar.slot = 'progress-bar'; bar.className = 'ms-progress'; mv.appendChild(bar);
+    mv.addEventListener('progress', ev => { bar.style.width = (ev.detail.totalProgress * 100) + '%'; bar.style.opacity = ev.detail.totalProgress >= 1 ? 0 : 1; });
+    mv.addEventListener('error', () => { stage.innerHTML = '<p class="ms-wait">This 3D model couldn\'t be loaded. It needs to be a .glb or .gltf file, on a site that lets other sites use its files (e.g. this site\'s ' + MODEL_DIR + ' folder).</p>'; });
+    stage.innerHTML = ''; stage.appendChild(mv);
+    sh.querySelector('[data-ms=reset]').onclick = () => { mv.cameraOrbit = orbitOf(e); mv.cameraTarget = 'auto auto auto'; mv.fieldOfView = 'auto'; mv.jumpCameraToGoal(); };
+  }, () => { stage.innerHTML = '<p class="ms-wait">The 3D viewer couldn\'t be loaded. Check the internet connection.</p>'; });
+}
 /* ---------- Poster image (kept on this device only) ---------- */
 const poster = { img: null, scale: 1, ox: 0, oy: 0 };
 function posterRect(g) {
@@ -1037,7 +1237,35 @@ function siteFiles(folder, extRe, fresh) {
     .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name)));
 }
 const AUDIO_DIR = 'resources/audio/', AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|oga|opus|webm|flac)$/i;
+const MODEL_DIR = 'resources/models/', MODEL_EXT = /\.(glb|gltf)$/i;
 const prettyName = n => n.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+
+/* ---------- 3D models ----------
+   Shown with Google's <model-viewer> (free, open source): touch to turn, pinch to zoom, two fingers to
+   move, and on phones that support it, "View in your room" (Android Scene Viewer / iPhone Quick Look).
+   It's big (about 1 MB), so it is only downloaded when a poster has a 3D model. */
+const MV_URL = "https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer.min.js";
+let mvLoad = null;
+function ensureModelViewer() {
+  if (customElements.get('model-viewer')) return Promise.resolve();
+  if (!mvLoad) {
+    const t = document.body.classList.contains('booting') ? boot.task(4) : null;   // counts on the loading screen
+    mvLoad = fetch(MV_URL).then(async r => {
+      if (!r.ok || !r.body) throw new Error('fetch');
+      const reader = r.body.getReader(), parts = []; let got = 0;
+      for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); got += value.length; if (t) t.progress(Math.min(0.95, got / 980000)); }
+      return import(URL.createObjectURL(new Blob(parts, { type: 'text/javascript' })));
+    }).catch(() => import(MV_URL))
+      .then(() => { if (t) t.done(); }, err => { if (t) t.done(); mvLoad = null; throw err; });
+  }
+  return mvLoad;
+}
+// A GitHub file page (github.com/…/blob/…) -> the file itself.
+const rawGitHub = u => (u || '').replace(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/i, 'https://raw.githubusercontent.com/$1/$2/$3');
+// The address to actually load a file from: a Google Drive share link becomes the file itself (through
+// the Drive API key, see DRIVE_API_KEY), a GitHub file page becomes the raw file; others stay as they are.
+const fileSrc = u => { const id = /drive\.google\.com|docs\.google\.com/i.test(u || '') ? driveId(u) : ''; return (id && driveDirect(id)) || rawGitHub(u); };
+const orbitOf = e => e.o ? `${e.o[0]}deg ${e.o[1]}deg auto` : '0deg 75deg auto';
 /* ---------- Editor ---------- */
 let saveTimer = null, pvZ = 1, pvTx = 0, pvTy = 0, zoomF = 1, sel = -1;
 const ICON = t => `<svg aria-hidden="true"><use href="#i-${t}"/></svg>`;
@@ -1064,7 +1292,7 @@ function problem(e) {
   if (e.t === 'g' && !driveId(e.url)) return e.url ? "That isn't a Google Drive file link" : 'Paste a Google Drive share link';
   if (e.t === 'o' && !oneDriveSource(e.url)) return e.url ? "That isn't a OneDrive or SharePoint link" : 'Paste a OneDrive share link or embed code';
   if (e.t === 'l' && !e.url) return 'Add the link address';
-  if ('iva'.includes(e.t) && !e.url) return 'Add the address';
+  if ('ivam'.includes(e.t) && !e.url) return e.t === 'm' ? 'Pick a 3D model, or add its address' : 'Add the address';
   if (e.t === 'b' && (e.f & SOUND) && !e.url) return 'Pick a sound, or add its address';
   if (e.url && !/^https?:\/\//i.test(e.url) && !/^resources\//.test(e.url) && !'yg'.includes(e.t)) return 'Addresses start with https://';
   return '';
@@ -1081,18 +1309,28 @@ function renderPreview() {
   scene.forEach((e, i) => {
     const wrap = makeEl(e, false);
     wrap.dataset.i = i;
-    if (i === sel) {
-      wrap.classList.add('sel');
-      for (const d of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rot']) {
-        const h = document.createElement('div'); h.className = 'hd ' + d; h.dataset.d = d; wrap.appendChild(h);
-      }
-    }
+    if (i === sel) wrap.classList.add('sel');
     // Images: the first time an address is set, match the box to the picture's shape.
     const img = wrap.querySelector('img');
     if (img && e._fit) img.onload = () => { if (!e._fit) return; e._fit = false; e.h = snap(e.w * img.naturalHeight / img.naturalWidth); renderPreview(); changed(false); };
     wrap.addEventListener('pointerdown', ev => startDrag(ev, wrap, e, i));
     layer.appendChild(wrap);
   });
+  // The selected item's outline and handles sit above every layer (its picture stays in its own
+  // layer), so an item underneath others can still be moved, resized and turned.
+  layer.querySelectorAll('.ar-sel').forEach(n => n.remove());
+  const e = scene[sel];
+  if (e) {
+    const f = document.createElement('div');
+    f.className = 'ar-sel';
+    Object.assign(f.style, { left: e.x * UNIT + 'px', top: e.y * UNIT + 'px', width: e.w * UNIT + 'px', height: e.h * UNIT + 'px' });
+    if (e.r) f.style.transform = `rotate(${e.r}deg)`;
+    for (const d of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w', 'rot']) {
+      const h = document.createElement('div'); h.className = 'hd ' + d; h.dataset.d = d; f.appendChild(h);
+    }
+    f.addEventListener('pointerdown', ev => startDrag(ev, layer.querySelector(`.ar-el[data-i="${sel}"]`), e, sel));
+    layer.appendChild(f);
+  }
   applyZoom();
 }
 function applyZoom() {
@@ -1123,8 +1361,10 @@ function startDrag(ev, wrap, e, i) {
   if (ev.button > 0) return;
   ev.preventDefault(); ev.stopPropagation();
   const d = ev.target.classList.contains('hd') ? ev.target.dataset.d : null;
-  if (sel !== i) { select(i); wrap = $(`#pvLayer .ar-el[data-i="${i}"]`); }
-  const target = d ? wrap.querySelector('.hd.' + d) : wrap;
+  if (sel !== i) select(i);
+  wrap = $(`#pvLayer .ar-el[data-i="${i}"]`);
+  const frame = $('#pvLayer .ar-sel');
+  const target = d ? frame.querySelector('.hd.' + d) : frame;
   target.setPointerCapture(ev.pointerId);
   const sx = ev.clientX, sy = ev.clientY, o = { x: e.x, y: e.y, w: e.w, h: e.h, r: e.r || 0 };
   const box = wrap.getBoundingClientRect(), ccx = box.left + box.width / 2, ccy = box.top + box.height / 2; // centre on screen
@@ -1142,7 +1382,7 @@ function startDrag(ev, wrap, e, i) {
       r = m.shiftKey ? Math.round(r) : Math.round(r / 15) * 15;
       r = ((r % 360) + 540) % 360 - 180;           // -180..180
       e.r = r === -180 ? 180 : r;
-      wrap.style.transform = e.r ? `rotate(${e.r}deg)` : '';
+      wrap.style.transform = frame.style.transform = e.r ? `rotate(${e.r}deg)` : '';
       syncNums(); return;
     } else {
       // Work in the item's own (turned) directions, so handles behave the same at any angle.
@@ -1164,7 +1404,8 @@ function startDrag(ev, wrap, e, i) {
       const ncx = o.x + o.w / 2 + cx * cos - cy * sin, ncy = o.y + o.h / 2 + cx * sin + cy * cos;
       Object.assign(e, { x: ncx - w / 2, y: ncy - h / 2, w, h });
     }
-    Object.assign(wrap.style, { left: e.x * UNIT + 'px', top: e.y * UNIT + 'px', width: e.w * UNIT + 'px', height: e.h * UNIT + 'px' });
+    const pos = { left: e.x * UNIT + 'px', top: e.y * UNIT + 'px', width: e.w * UNIT + 'px', height: e.h * UNIT + 'px' };
+    Object.assign(wrap.style, pos); Object.assign(frame.style, pos);
     if (d && 'bly'.includes(e.t)) { const c = wrap.firstElementChild; if (c && c.style.fontSize) c.style.fontSize = e.h * UNIT * (e.t === 'l' ? 0.6 : 0.45) + 'px'; }
     syncNums();
   };
@@ -1193,17 +1434,52 @@ function stageDown(ev) {
   if (sel >= 0) select(-1);
 }
 
+// Layers: listed top first (the last item in the scene is drawn on top). Drag the grip to reorder.
 function renderList() {
   const ol = $('#list');
   ol.innerHTML = '';
-  scene.forEach((e, i) => {
-    const li = document.createElement('li');
-    const p = problem(e);
-    li.innerHTML = `<button class="${i === sel ? 'on' : ''}">${ICON(e.t)}<span>${esc(label(e))}</span>${p ? '<span class="warn">Needs a link</span>' : ''}</button>`;
-    li.firstChild.onclick = () => select(i, true);
+  for (let i = scene.length - 1; i >= 0; i--) {
+    const e = scene[i], li = document.createElement('li'), p = problem(e);
+    li.dataset.i = i;
+    li.innerHTML = `<span class="grip" title="Drag to change the layer order" aria-hidden="true">⠿</span><button class="${i === sel ? 'on' : ''}">${ICON(e.t)}<span>${esc(label(e))}</span>${p ? '<span class="warn">Needs a link</span>' : ''}</button>`;
+    li.querySelector('button').onclick = () => select(i, true);
+    li.querySelector('.grip').addEventListener('pointerdown', ev => dragLayer(ev, li));
     ol.appendChild(li);
-  });
+  }
+  $('#layersHead').hidden = scene.length < 2;
   $('#layersEmpty').hidden = scene.length > 0;
+}
+function dragLayer(ev, li) {
+  ev.preventDefault();
+  const ol = $('#list'), grip = ev.currentTarget, rows = [...ol.children], from = rows.indexOf(li), y0 = ev.clientY;
+  const mids = rows.map(r => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; });
+  let to = from;
+  grip.setPointerCapture(ev.pointerId);
+  li.classList.add('dragging');
+  const move = m => {
+    const dy = m.clientY - y0, y = mids[from] + dy;
+    li.style.transform = `translateY(${dy}px)`;
+    to = mids.filter((c, k) => k !== from && c < y).length;
+    rows.forEach((r, k) => { if (r === li) return; const shift = from < to ? (k > from && k <= to ? -1 : 0) : (k >= to && k < from ? 1 : 0); r.style.transform = shift ? `translateY(${shift * (li.offsetHeight + 4)}px)` : ''; });
+  };
+  const up = () => {
+    grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', up);
+    rows.forEach(r => { r.style.transform = ''; }); li.classList.remove('dragging');
+    if (to === from) return;
+    const n = scene.length, item = scene.splice(n - 1 - from, 1)[0];   // list position -> scene position (top first)
+    scene.splice(n - 1 - to, 0, item);
+    select(scene.indexOf(item)); changed(false);
+  };
+  grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', up);
+}
+// Move the selected item up or down the layers: 'top', 'up', 'down', 'bottom'.
+function moveLayer(how) {
+  if (sel < 0) return;
+  const item = scene[sel], n = scene.length;
+  const to = how === 'top' ? n - 1 : how === 'bottom' ? 0 : Math.max(0, Math.min(n - 1, sel + (how === 'up' ? 1 : -1)));
+  if (to === sel) return;
+  scene.splice(sel, 1); scene.splice(to, 0, item);
+  select(to); changed(false);
 }
 function syncNums() {
   const e = scene[sel], box = $('#inspector');
@@ -1224,14 +1500,21 @@ function renderInspector() {
     ${e.t === 'b' ? `<div class="field"><span>When it's tapped</span>
       <label class="toggle"><input type="radio" name="btnDo" data-btn="0" ${(e.f & SOUND) ? '' : 'checked'}><span>Opens a web page</span></label>
       <label class="toggle"><input type="radio" name="btnDo" data-btn="1" ${(e.f & SOUND) ? 'checked' : ''}><span>Plays a sound</span></label></div>` : ''}
-    ${(e.t === 'a' || (e.t === 'b' && (e.f & SOUND))) ? `<div class="field"><span>Sounds in your site's ${AUDIO_DIR} folder</span>
-      <div class="row" style="gap:6px;flex-wrap:nowrap"><select data-pick style="flex:1;min-width:0"><option value="">Looking…</option></select><button class="btn" type="button" data-act="relist" title="Look again">↻</button><button class="btn" type="button" data-act="listen" title="Listen">▶</button></div>
+    ${(e.t === 'a' || e.t === 'm' || (e.t === 'b' && (e.f & SOUND))) ? `<div class="field"><span>${e.t === 'm' ? '3D models' : 'Sounds'} in your site's ${e.t === 'm' ? MODEL_DIR : AUDIO_DIR} folder</span>
+      <div class="row" style="gap:6px;flex-wrap:nowrap"><select data-pick style="flex:1;min-width:0"><option value="">Looking…</option></select><button class="btn" type="button" data-act="relist" title="Look again">↻</button>${e.t === 'm' ? '' : '<button class="btn" type="button" data-act="listen" title="Listen">▶</button>'}</div>
       <small class="hint" data-pickmsg style="margin:0"></small></div>` : ''}
-    ${T.url ? `<label class="field"><span>${e.t === 'b' && (e.f & SOUND) ? 'Or a sound file\'s web address' : T.url}</span><input type="url" data-k="url" value="${esc(e.url)}" placeholder="https://"><small class="err" data-err></small></label>` : ''}
+    ${T.url ? `<label class="field"><span>${e.t === 'b' && (e.f & SOUND) ? 'Or a sound file\'s web address' : e.t === 'm' ? 'Or a .glb file\'s web address, or a Google Drive share link' : T.url}</span><input type="url" data-k="url" value="${esc(e.url)}" placeholder="https://"><small class="err" data-err></small></label>` : ''}
     ${e.t === 'o' || e.t === 'g' ? `<div class="row" style="margin:-4px 0 8px"><button class="btn" data-act="check">Check this link</button><small data-check aria-live="polite"></small></div>
       <details style="margin-bottom:10px"><summary>How to get a OneDrive link</summary>
         <p class="hint" style="margin:6px 0">Most reliable: open the video in OneDrive, choose <b>Embed</b> (or in Stream: <b>Share → Embed code</b>), copy the code and paste it here.</p>
         <p class="hint" style="margin:0">Or choose <b>Share</b>, set it to <b>Anyone with the link</b>, and copy the link. School accounts may not allow "Anyone" links; if so, ask your IT team or use the embed code.</p>
+      </details>` : ''}
+    ${e.t === 'm' ? `<div class="field" data-viewbox ${e.url ? '' : 'hidden'}><span>Starting view</span>
+      <div class="m-pick"><model-viewer data-view camera-controls touch-action="none" interaction-prompt="none" shadow-intensity="0.8" environment-image="neutral"></model-viewer></div>
+      <div class="row" style="margin-top:6px"><button class="btn" type="button" data-act="view0">Reset</button><small class="hint" style="margin:0">Drag the model to choose how it first faces people. Scroll or pinch to check details (zoom isn't saved).</small></div></div>
+      <details style="margin-bottom:10px"><summary>Getting a 3D model</summary>
+        <p class="hint" style="margin:6px 0">Use a <b>.glb</b> file. Tinkercad: <b>Export → .GLTF (.glb)</b>. Other apps: export as glTF binary. An .stl or .obj file (3D printing) can be turned into .glb by importing it into Tinkercad and exporting again.</p>
+        <p class="hint" style="margin:0">Put it in your site's <b>${MODEL_DIR}</b> folder on GitHub (then press ↻), or share it from Google Drive (<b>Anyone with the link</b>) and paste the link. Files on other sites only work if that site allows it; GitHub and Google Drive files do. Keep files under about 10 MB so they load quickly on phones.</p>
       </details>` : ''}
     ${(T.opts || []).filter(o => o !== 'btn').map(o => o === 'look'
       ? `<div class="field"><span>Look</span>${LOOKS.map(c => `<label class="toggle"><input type="radio" name="look" data-look="${c.bit}" ${((e.f || 0) & LOOK) === c.bit ? 'checked' : ''}><span>${c.label}</span></label>`).join('')}</div>`
@@ -1253,9 +1536,15 @@ function renderInspector() {
         <label>Width<input type="number" step="0.5" min="2" data-k="w"></label><label>Height<input type="number" step="0.5" min="2" data-k="h"></label>
       </div>
     </details>
+    <div class="field" style="margin-top:12px"><span>Layer <small class="hint" style="font-weight:400">(${scene.length - sel} of ${scene.length}, from the top)</small></span>
+      <div class="row layer-row">
+        <button class="btn" type="button" data-layer="top" ${sel === scene.length - 1 ? 'disabled' : ''} title="In front of everything">To front</button>
+        <button class="btn" type="button" data-layer="up" ${sel === scene.length - 1 ? 'disabled' : ''} title="One layer up">Forward</button>
+        <button class="btn" type="button" data-layer="down" ${sel === 0 ? 'disabled' : ''} title="One layer down">Backward</button>
+        <button class="btn" type="button" data-layer="bottom" ${sel === 0 ? 'disabled' : ''} title="Behind everything">To back</button>
+      </div></div>
     <div class="row" style="margin-top:12px">
       <button class="btn" data-act="dup">Duplicate</button>
-      <button class="btn" data-act="front">Bring to front</button>
       <button class="btn danger" data-act="del">Delete</button>
     </div>
     <p class="hint" style="margin:10px 0 0">Drag the yellow handles to resize, or the round one on top to turn it. Hold Shift to stretch or turn freely.</p>`;
@@ -1276,6 +1565,11 @@ function renderInspector() {
       } else {
         e[k] = inp.value.trim();
         if (k === 'url' && e.t === 'i') e._fit = true;
+        if (k === 'url' && e.t === 'm') {
+          delete e.o;
+          const vb = box.querySelector('[data-viewbox]'), v = box.querySelector('[data-view]');
+          vb.hidden = !e.url; if (e.url) { v.setAttribute('camera-orbit', orbitOf(e)); v.setAttribute('src', fileSrc(e.url)); }
+        }
         if (k === 'url' && e.t === 'o') { e.url = cleanOneDrive(inp.value); if (e.url !== inp.value.trim()) inp.value = e.url; }
         showErr();
       }
@@ -1294,6 +1588,20 @@ function renderInspector() {
   });
   const pick = box.querySelector('[data-pick]');
   if (pick) fillSoundPicker(e, box, false);
+  const view = box.querySelector('[data-view]');
+  if (view) {
+    ensureModelViewer().catch(() => {});
+    if (e.url) view.setAttribute('src', fileSrc(e.url));
+    view.setAttribute('camera-orbit', orbitOf(e));
+    let t = 0;
+    view.addEventListener('camera-change', ev => {
+      if (ev.detail.source !== 'user-interaction') return;
+      const o = view.getCameraOrbit(), d = r => Math.round(r * 180 / Math.PI);
+      e.o = [((d(o.theta) % 360) + 360) % 360, Math.max(0, Math.min(180, d(o.phi)))];
+      clearTimeout(t); t = setTimeout(() => { renderPreview(); changed(false); }, 400);
+    });
+    box.querySelector('[data-act=view0]').onclick = () => { delete e.o; view.cameraOrbit = orbitOf(e); view.fieldOfView = 'auto'; view.jumpCameraToGoal(); renderPreview(); changed(false); };
+  }
   box.querySelectorAll('input[data-look]').forEach(rb => {
     rb.onchange = () => { e.f = ((e.f || 0) & ~LOOK) | +rb.dataset.look; changed(true); };
   });
@@ -1315,7 +1623,7 @@ function renderInspector() {
   const chk = box.querySelector('[data-act=check]');
   if (chk) chk.onclick = () => (e.t === 'g' ? checkDrive : checkOneDrive)(e, box.querySelector('[data-check]'));
   box.querySelector('[data-act=dup]').onclick = () => { const c = JSON.parse(JSON.stringify(e)); c.x = snap(c.x + 0.03); c.y = snap(c.y + 0.03); scene.push(c); select(scene.length - 1); changed(false); toast('Duplicated'); };
-  box.querySelector('[data-act=front]').onclick = () => { scene.splice(sel, 1); scene.push(e); select(scene.length - 1); changed(false); };
+  box.querySelectorAll('[data-layer]').forEach(b => { b.onclick = () => moveLayer(b.dataset.layer); });
   box.querySelector('[data-act=del]').onclick = deleteSelected;
   syncNums();
 }
@@ -1373,33 +1681,35 @@ function syncShapeUI() {
 // grouped by the folders inside it.
 let previewSnd = null;
 function fillSoundPicker(e, box, fresh) {
+  const M = e.t === 'm', DIR = M ? MODEL_DIR : AUDIO_DIR, EXT = M ? MODEL_EXT : AUDIO_EXT, noun = M ? '3D model' : 'sound';
   const sel = box.querySelector('[data-pick]'), msg = box.querySelector('[data-pickmsg]');
   const urlIn = box.querySelector('[data-k=url]');
   box.querySelector('[data-act=relist]').onclick = () => fillSoundPicker(e, box, true);
-  box.querySelector('[data-act=listen]').onclick = () => {
+  const listen = box.querySelector('[data-act=listen]');
+  if (listen) listen.onclick = () => {
     if (previewSnd) { previewSnd.pause(); previewSnd = null; return; }
     if (!e.url) return;
-    previewSnd = new Audio(e.url); previewSnd.onended = () => { previewSnd = null; }; previewSnd.play().catch(() => { previewSnd = null; msg.textContent = "Couldn't play that sound here."; });
+    previewSnd = new Audio(fileSrc(e.url)); previewSnd.onended = () => { previewSnd = null; }; previewSnd.play().catch(() => { previewSnd = null; msg.textContent = "Couldn't play that sound here."; });
   };
-  sel.onchange = () => { if (!sel.value) return; e.url = sel.value; if (urlIn) urlIn.value = e.url; renderPreview(); renderList(); changed(false); box.querySelector('[data-err]') && (box.querySelector('[data-err]').textContent = problem(e)); };
+  sel.onchange = () => { if (!sel.value) return; e.url = sel.value; if (urlIn) urlIn.value = e.url; renderPreview(); renderList(); changed(false); if (M) { delete e.o; renderInspector(); return; } box.querySelector('[data-err]') && (box.querySelector('[data-err]').textContent = problem(e)); };
   if (!SITE_REPO) {
     sel.innerHTML = '<option value="">(only on the published site)</option>'; sel.disabled = true;
-    msg.textContent = 'Once this page is on GitHub Pages, sound files you put in its ' + AUDIO_DIR + ' folder appear here.';
+    msg.textContent = 'Once this page is on GitHub Pages, ' + noun + ' files you put in its ' + DIR + ' folder appear here.';
     return;
   }
   sel.disabled = true; sel.innerHTML = '<option value="">Looking…</option>'; msg.textContent = '';
-  siteFiles(AUDIO_DIR, AUDIO_EXT, fresh).then(list => {
+  siteFiles(DIR, EXT, fresh).then(list => {
     if (!sel.isConnected) return;
     sel.disabled = false;
-    if (!list.length) { sel.innerHTML = '<option value="">No sounds found</option>'; msg.textContent = 'Put .mp3 (or .m4a, .wav, .ogg) files in the ' + AUDIO_DIR + ' folder of the site\'s GitHub repository, then press ↻.'; return; }
-    let html = '<option value="">Choose a sound…</option>', group = null;
+    if (!list.length) { sel.innerHTML = '<option value="">No ' + noun + 's found</option>'; msg.textContent = (M ? 'Put .glb files' : 'Put .mp3 (or .m4a, .wav, .ogg) files') + ' in the ' + DIR + ' folder of the site\'s GitHub repository, then press ↻.'; return; }
+    let html = '<option value="">Choose a ' + noun + '…</option>', group = null;
     for (const f of list) {
       if (f.group !== group) { if (group !== null) html += '</optgroup>'; group = f.group; if (group) html += `<optgroup label="${esc(group)}">`; }
       html += `<option value="${esc(f.path)}" ${e.url === f.path ? 'selected' : ''}>${esc(prettyName(f.name))}</option>`;
     }
     if (group) html += '</optgroup>';
     sel.innerHTML = html;
-    msg.textContent = list.length + ' sound' + (list.length === 1 ? '' : 's') + ' found.';
+    msg.textContent = list.length + ' ' + noun + (list.length === 1 ? '' : 's') + ' found.';
   }).catch(err => { if (!sel.isConnected) return; sel.innerHTML = '<option value="">Not available</option>'; msg.textContent = err.message; });
 }
 function deleteSelected() {
@@ -1701,12 +2011,33 @@ function startAutoplay() {
 
 
 function buildLayer() {
+  modelsSpinning = null;
   clearMedia();
   const layer = $('#layer'), g = geo();
   layer.style.width = UNIT + 'px'; layer.style.height = UNIT * g.Hf + 'px';
   (scene || []).filter(e => !problem(e)).forEach(e => layer.appendChild(makeEl(e, true))); // skip unfinished items
+  const yt = ytQueue.slice();
   setupYouTube();
   browserAdvice(false);
+  return yt;
+}
+// While the loading screen shows: wait for the poster's pictures, videos and players (each at most 8 s,
+// so a slow or blocked site can't hold everything up). Returns how many there were.
+function trackLayerMedia(yt) {
+  const layer = $('#layer'), once = (n, evs) => new Promise(r => evs.forEach(ev => n.addEventListener(ev, r, { once: true })));
+  let n = 0;
+  layer.querySelectorAll('img').forEach(i => { if (!i.complete) { n++; boot.wait(once(i, ['load', 'error']), 1); } });
+  layer.querySelectorAll('iframe').forEach(f => { n++; boot.wait(once(f, ['load', 'error']), 2); });
+  layer.querySelectorAll('model-viewer').forEach(m => { n++; boot.wait(once(m, ['load', 'error']), 2, 15000); });
+  layer.querySelectorAll('video,audio').forEach(m => { if (m.readyState < 1) { n++; boot.wait(once(m, ['loadedmetadata', 'error']), 1); } });
+  if (yt && yt.length) {
+    n += yt.length;
+    boot.wait(loadYouTubeApi().then(() => new Promise(r => {
+      const check = () => yt.every(e => e.ready || !e.wrap.isConnected) ? r() : setTimeout(check, 150);
+      check();
+    })), 2 * yt.length);
+  }
+  return n;
 }
 /* OneDrive videos only play inside this page when the browser sends Microsoft's cookie with them
    (a "third-party" cookie). Chrome on Android does; Samsung Internet, Firefox, Brave, private tabs,
@@ -3008,9 +3339,11 @@ function qrBoxFromFrame(fpts) {
 function initWorker() {
   if (worker || !window.Worker) return;
   try {
+    // The QR library as downloaded by the loading screen (or, if that failed, by its address).
     const tag = document.querySelector('script[src*="jsQR"]');
-    const src = new URL(tag.getAttribute('src'), location.href).href;
-    const code = 'importScripts(' + JSON.stringify(src) + ');' +
+    const lib = boot.jsqrText ? boot.jsqrText + '\n' : tag ? 'importScripts(' + JSON.stringify(new URL(tag.getAttribute('src'), location.href).href) + ');' : null;
+    if (!lib) return;
+    const code = lib +
       'onmessage=function(e){var d=e.data;var c=jsQR(new Uint8ClampedArray(d.buf),d.w,d.h,{inversionAttempts:"dontInvert"});' +
       'postMessage(c?{data:c.data,v:c.version,pts:[c.location.topLeftCorner,c.location.topRightCorner,c.location.bottomRightCorner,c.location.bottomLeftCorner]}:null);};';
     worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
@@ -3245,8 +3578,8 @@ function tick() {
   if (now < noteUntil) setStatus(note);
   else if (held) setStatus('Holding position — tap Resume to track again.');
   else if (!lastSeen) setStatus(Array.isArray(scene) ? 'Looking for the poster…' : 'Point at the QR code on a poster.');
-  else if (now - lastSeen > 700) { layer.classList.add('lost'); setStatus('Poster lost — step back so the whole black frame (or the QR code) is in view.'); }
-  else { layer.classList.remove('lost'); setStatus(Array.isArray(scene) ? 'Tracking (' + ({ features: 'poster picture' }[lastSource] || lastSource) + ') · ' + rate + ' fps' : 'Loading scene…'); }
+  else if (now - lastSeen > 700) { layer.classList.add('lost'); spinModels(false); setStatus('Poster lost — step back so the whole black frame (or the QR code) is in view.'); }
+  else { layer.classList.remove('lost'); spinModels(true); setStatus(Array.isArray(scene) ? 'Tracking (' + ({ features: 'poster picture' }[lastSource] || lastSource) + ') · ' + rate + ' fps' : 'Loading scene…'); }
   requestAnimationFrame(tick);
 }
 
@@ -3280,6 +3613,16 @@ function cameraChoices() {
 const BUSY_MSG = "Your camera is still being used by another app — probably the camera app you scanned the QR with. Close that app (swipe it away in your recent apps), then come back here. The camera will start by itself.";
 let camAttempt = 0; // bumps to cancel an in-progress start
 
+
+// Turning 3D models redraw constantly: only while the poster is in view (and visible), so they don't
+// take time from the tracking while it's searching.
+let modelsSpinning = null;
+function spinModels(on) {
+  on = on && $('#layer').style.visibility !== 'hidden';
+  if (on === modelsSpinning) return;
+  modelsSpinning = on;
+  $('#layer').querySelectorAll('model-viewer[data-spin]').forEach(m => { if (on) m.setAttribute('auto-rotate', ''); else m.removeAttribute('auto-rotate'); });
+}
 // getUserMedia that gives up after ms; if the camera arrives late, it is released again.
 function gumWithTimeout(c, ms) {
   return new Promise((resolve, reject) => {
@@ -3553,7 +3896,12 @@ async function route() {
     held = false; $('#holdBtn').textContent = 'Hold';
     $('#layer').style.visibility = 'hidden';
     $('#startPanel').hidden = false;
-    buildLayer();
+    const yt = buildLayer();
+    // The poster's videos and pictures: wait for them behind the loading screen (shown again when
+    // arriving from the editor).
+    const hasMedia = $('#layer').querySelector('img,iframe,video,audio,model-viewer') || yt.length;
+    if (hasMedia && !document.body.classList.contains('booting')) { boot.show('Loading the poster…'); trackLayerMedia(yt); boot.end(); }
+    else if (hasMedia) trackLayerMedia(yt);
   } else {
     $('#viewer').hidden = true; $('#editor').hidden = false;
     clearMedia();
@@ -3575,10 +3923,13 @@ async function route() {
   }
 }
 
-initEditor();
-initViewer();
-addEventListener('hashchange', route);
-route();
+boot.libs.then(async () => {
+  initEditor();
+  initViewer();
+  addEventListener('hashchange', route);
+  await route();
+  boot.end();
+});
 </script>
 </body>
 </html>
