@@ -117,9 +117,36 @@
   #pvLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
   #pvStand { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   #preview.pv3d { cursor: grab; }
-  #preview.pv3d .ar-el, #preview.pv3d .ar-sel { pointer-events: none; }
   #preview.pv3d .ar-sel, #preview.pv3d .ar-el[data-stand] { display: none; }
-  .pv3d-hint { position: absolute; left: 14px; top: 12px; margin: 0; padding: 6px 12px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 14px; pointer-events: none; }
+  #pvLayer3d { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  #pvLayer3d .ar-el { transform-origin: 0 0; cursor: move; }
+  #pvLayer3d .ar-el > * { pointer-events: none; }
+  .ar-el.sel3d { outline: 3px solid var(--mark); }
+  /* In the flat view, raised or standing items get a small "3D" tag. */
+  #pvLayer .ar-el.is3d::after { content: '3D'; position: absolute; right: 0; top: 0; transform: translate(30%, -60%); background: #111; color: #fff;
+    font: 700 calc(var(--hs) * 0.9)/1 var(--ui); padding: calc(var(--hs) * .2) calc(var(--hs) * .35); border-radius: 999px; pointer-events: none; }
+  #pv3dHandles { position: absolute; inset: 0; pointer-events: none; }
+  #pv3dHandles[hidden] { display: none; }
+  .h3d { position: absolute; transform: translate(-50%, -50%); width: 40px; height: 40px; border-radius: 50%; border: 2px solid #000; background: var(--mark);
+    font: 700 20px/1 var(--ui); color: #000; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: grab; touch-action: none; padding: 0; box-shadow: 0 2px 8px #0005; }
+  .h3d.h-base { width: 14px; height: 14px; background: #fff; pointer-events: none; }
+  .h-stem { position: absolute; width: 2px; margin-left: -1px; background: #000c; pointer-events: none; }
+  .pv3d-bar { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; pointer-events: none; }
+  .pv3d-bar[hidden] { display: none; }
+  .pv3d-bar > * { pointer-events: auto; }
+  .pv3d-bar > span { color: #fff; font-weight: 700; text-shadow: 0 1px 3px #000; }
+  .pv3d-bar .btn { min-height: 34px; padding: 2px 12px; }
+  .pv3d-bar small { flex: 1 1 100%; color: #fff; text-shadow: 0 1px 3px #000; pointer-events: none; }
+  .lift-row { flex-wrap: nowrap; gap: 10px; align-items: center; }
+  .lift-row input[type=range] { flex: 1; accent-color: #111; }
+  .lift-row output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  .link-btn { margin-top: 6px; }
+  /* Simple / Advanced */
+  .mode-switch { display: inline-flex; border: 2px solid var(--line); border-radius: 999px; overflow: hidden; margin-left: 14px; }
+  .mode-switch button { border: 0; background: var(--paper); padding: 6px 14px; font: 700 14px var(--ui); cursor: pointer; color: inherit; }
+  .mode-switch button[aria-pressed="true"] { background: var(--mark); }
+  body:not(.adv) .adv-only { display: none !important; }
+  @media (max-width: 560px) { .topbar .brand b { display: none; } .mode-switch { margin-left: 8px; } .mode-switch button { padding: 6px 10px; } }
   .m-rot .deg { display: inline-flex; align-items: center; gap: 3px; }
   #pvPoster { position: absolute; display: block; box-shadow: 0 6px 18px #0006; }
   #preview.posterMode { cursor: move; }
@@ -299,7 +326,9 @@
   #guideMsg { margin: 0; max-width: 340px; text-align: center; color: #fff; font: 700 17px/1.35 var(--ui); background: #000000b0; padding: 8px 14px; border-radius: 12px; }
   #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   #layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; visibility: hidden; transition: opacity .3s; }
-  #layer.lost, #stand3d.lost { opacity: .4; }
+  #layer.lost, #layer3d.lost, #stand3d.lost { opacity: .4; }
+  #layer3d { position: absolute; left: 0; top: 0; width: 0; height: 0; visibility: hidden; transition: opacity .3s; }
+  #layer3d .ar-el { transform-origin: 0 0; }
   #stand3d { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; visibility: hidden; transition: opacity .3s; }
   #hud { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; gap: 6px; align-items: flex-start; justify-content: space-between; z-index: 3; pointer-events: none; }
   #hud > * { pointer-events: auto; }
@@ -453,6 +482,9 @@ const boot = (() => {
 <div id="editor" hidden>
   <header class="topbar">
     <a class="brand" href="#" aria-label="Poster AR home"><svg><use href="#i-frame"/></svg><b>Poster AR</b></a>
+    <div class="mode-switch" role="group" aria-label="How many options to show">
+      <button type="button" data-mode="simple" aria-pressed="true">Simple</button><button type="button" data-mode="adv" aria-pressed="false">Advanced</button>
+    </div>
     <span class="spacer"></span>
     <a class="btn ghost" href="#scan">Scan<span class="long">&nbsp;a poster</span></a>
     <a class="btn primary" id="testLink" href="#"><svg><use href="#i-phone"/></svg>Try it<span class="long">&nbsp;in the viewer</span></a>
@@ -460,14 +492,28 @@ const boot = (() => {
 
   <div class="workspace">
     <section class="stage-wrap" aria-label="Poster">
-      <div id="preview"><div id="pvLayer"><canvas id="pvPoster"></canvas></div><canvas id="pvStand" hidden aria-hidden="true"></canvas>
-        <p id="pv3dHint" class="pv3d-hint" hidden>3D preview: drag to look around the poster. Press 2D to edit.</p></div>
+      <div id="preview"><div id="pvLayer"><canvas id="pvPoster"></canvas></div><div id="pvLayer3d"></div><canvas id="pvStand" hidden aria-hidden="true"></canvas>
+        <div id="pv3dHandles" hidden>
+          <span class="h-stem"></span>
+          <span class="h3d h-base" data-h="base"></span>
+          <button type="button" class="h3d" data-h="lift" title="Drag up or down to raise or lower it" aria-label="Raise or lower">↕</button>
+          <button type="button" class="h3d" data-h="turn" title="Drag left or right to turn it" aria-label="Turn">⟲</button>
+          <button type="button" class="h3d" data-h="size" title="Drag in or out to make it smaller or bigger" aria-label="Size">⤢</button>
+        </div>
+        <div id="pv3dBar" class="pv3d-bar" hidden>
+          <span>View:</span>
+          <button class="btn" type="button" data-cam="front">Straight on</button>
+          <button class="btn" type="button" data-cam="angle">Angle</button>
+          <button class="btn" type="button" data-cam="low">Low</button>
+          <button class="btn" type="button" data-cam="side">Side</button>
+          <small id="pv3dMsg">Drag empty space to look around. Drag a thing to move it.</small>
+        </div></div>
       <div class="stage-chip" id="posterChip" hidden>Drag to move your poster image <button class="btn" id="posterDone">Done</button></div>
       <div class="stage-tools" role="group" aria-label="Zoom">
         <button class="btn" id="zoomOut" aria-label="Zoom out">−</button>
         <button class="btn" id="zoomFit">Fit</button>
         <button class="btn" id="zoomIn" aria-label="Zoom in">+</button>
-        <button class="btn" id="view3d" aria-pressed="false" title="See the poster from an angle, with 3D models standing on it">3D preview</button>
+        <button class="btn" id="view3d" aria-pressed="false" title="See the poster from an angle, and arrange things in 3D">3D view</button>
       </div>
     </section>
 
@@ -538,6 +584,7 @@ const boot = (() => {
 <div id="viewer" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <div id="layer"></div>
+  <div id="layer3d"></div>
   <canvas id="stand3d" aria-hidden="true"></canvas>
   <div id="guide" hidden aria-hidden="true"><svg id="guideSvg"></svg><p id="guideMsg"></p></div>
   <div id="hud">
@@ -607,6 +654,9 @@ const boot = (() => {
    - Several posters: while following one, its QR code is read now and then; a different poster's
      scene loads in the same tab (camera still running). From too far to read the QR, the learned
      picture shows it's a different poster: its overlays are hidden and people are asked to move closer.
+   - 3D space: any item can be raised above the poster, stood up, tilted and leaned (33-space), and placed
+     off the poster's edge. The editor's 3D view (34-edit3d) arranges things with simple handles (slide,
+     raise, turn, size) and set camera angles. A Simple / Advanced switch hides the fine-tuning numbers.
    - Layers: items are drawn in scene order (later = in front); the editor's layer list and Layer
      buttons change the order.
 
@@ -782,22 +832,30 @@ async function streamBytes(bytes, transform) {
   const s = new Blob([bytes]).stream().pipeThrough(transform);
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
+// One item -> its list of values (type-specific).
+function packOne(e) {
+  // A turned item stores its angle with its type letter ("y@15" = YouTube turned 15 degrees).
+  const rot = Math.round(e.r || 0) % 360;
+  const base = [rot ? e.t + '@' + rot : e.t, k3(e.x), k3(e.y), k3(e.w), k3(e.h)];
+  if (e.t === 'b' || e.t === 'l') return [...base, e.txt || '', e.url || '', ...(e.f ? [e.f] : [])];
+  if (e.t === 't') return [...base, e.txt || '', ...(e.f ? [e.f] : [])];
+  const f = e.f ? [e.f] : [];
+  if (e.t === 'y') return [...base, ytId(e.url), ...f];
+  if (e.t === 'g') return [...base, driveId(e.url), ...f];
+  if (e.t === 'm') {
+    const q = e.q && e.q.some(v => v) ? e.q : null;
+    if (e.o || q) return [...base, e.url || '', e.f || 0, ...(e.o || [0, 75]), ...(q || [])];
+  }
+  return [...base, e.url || '', ...f];
+}
+// Position in 3D (height, tilt, lean): a small object at the end, only when used.
+function withSpace(e, a) {
+  const x = {};
+  if (e.z) x.z = k3(e.z); if (e.a) x.a = Math.round(e.a); if (e.b) x.b = Math.round(e.b);
+  return Object.keys(x).length ? [...a, x] : a;
+}
 async function pack(sc) {
-  const arr = sc.map(e => {
-    // A turned item stores its angle with its type letter ("y@15" = YouTube turned 15 degrees).
-    const rot = Math.round(e.r || 0) % 360;
-    const base = [rot ? e.t + '@' + rot : e.t, k3(e.x), k3(e.y), k3(e.w), k3(e.h)];
-    if (e.t === 'b' || e.t === 'l') return [...base, e.txt || '', e.url || '', ...(e.f ? [e.f] : [])];
-    if (e.t === 't') return [...base, e.txt || '', ...(e.f ? [e.f] : [])];
-    const f = e.f ? [e.f] : [];
-    if (e.t === 'y') return [...base, ytId(e.url), ...f];
-    if (e.t === 'g') return [...base, driveId(e.url), ...f];
-    if (e.t === 'm') {
-      const q = e.q && e.q.some(v => v) ? e.q : null;
-      if (e.o || q) return [...base, e.url || '', e.f || 0, ...(e.o || [0, 75]), ...(q || [])];
-    }
-    return [...base, e.url || '', ...f];
-  });
+  const arr = sc.map(e => withSpace(e, packOne(e)));
   const bytes = new TextEncoder().encode(JSON.stringify([CUT[layout] ? Math.max(3, layout) : LAYOUT_NOW, shapeIdx, arr]));
   if ('CompressionStream' in window) {
     try { return 'z' + toB64url(await streamBytes(bytes, new CompressionStream('deflate-raw'))); } catch (e) {}
@@ -813,7 +871,13 @@ async function unpack(str) {
   const els = arr.map(a => {
     let e, rest;
     if (ver >= 3) { e = { t: a[0], x: a[1] / 1000, y: a[2] / 1000, w: a[3] / 1000, h: a[4] / 1000 }; rest = a.slice(5); }
-    else { e = { t: a[0], x: a[1] / 1000, y: a[2] / 1000, s: a[3] / 1000 }; rest = a.slice(4); }
+    else rest = null;
+    const last = rest && rest[rest.length - 1];
+    if (last && typeof last === 'object' && !Array.isArray(last)) {   // position in 3D
+      rest = rest.slice(0, -1);
+      if (last.z) e.z = last.z / 1000; if (last.a) e.a = +last.a || 0; if (last.b) e.b = +last.b || 0;
+    }
+    if (rest === null) { e = { t: a[0], x: a[1] / 1000, y: a[2] / 1000, s: a[3] / 1000 }; rest = a.slice(4); }
     if (typeof e.t === 'string' && e.t.includes('@')) { const [t, r] = e.t.split('@'); e.t = t; e.r = +r || 0; }
     if (e.t === 'b' || e.t === 'l') { e.txt = rest[0]; e.url = rest[1]; e.f = rest[2] | 0; }
     else if (e.t === 't') { e.txt = rest[0] || ''; e.f = rest[1] | 0; }
@@ -1411,18 +1475,21 @@ function drawPreviewPoster() {
   Object.assign(cv.style, { left: -g.M * UNIT + 'px', top: -g.M * UNIT + 'px', width: UNIT * (1 + 2 * g.M) + 'px', height: UNIT * (g.Hf + 2 * g.M) + 'px' });
 }
 function renderPreview() {
-  const layer = $('#pvLayer');
+  const layer = $('#pvLayer'), layer3 = $('#pvLayer3d');
   layer.querySelectorAll('.ar-el').forEach(n => n.remove());
+  layer3.innerHTML = '';
   scene.forEach((e, i) => {
     const wrap = makeEl(e, false);
     wrap.dataset.i = i;
     if (isStand(e)) wrap.dataset.stand = '1';
+    if (isFlat3d(e) || (isStand(e) && e.z)) wrap.classList.add('is3d');   // raised or standing: marked in the flat view
     if (i === sel) wrap.classList.add('sel');
     // Images: the first time an address is set, match the box to the picture's shape.
     const img = wrap.querySelector('img');
     if (img && e._fit) img.onload = () => { if (!e._fit) return; e._fit = false; e.h = snap(e.w * img.naturalHeight / img.naturalWidth); renderPreview(); changed(false); };
-    wrap.addEventListener('pointerdown', ev => startDrag(ev, wrap, e, i));
-    layer.appendChild(wrap);
+    wrap.addEventListener('pointerdown', ev => pv3d ? down3d(ev, i) : startDrag(ev, wrap, e, i));
+    if (pv3d && isFlat3d(e)) { if (i === sel) wrap.classList.add('sel3d'); layer3.appendChild(wrap); }   // placed in 3D (apply3d)
+    else layer.appendChild(wrap);
   });
   // The selected item's outline and handles sit above every layer (its picture stays in its own
   // layer), so an item underneath others can still be moved, resized and turned.
@@ -1459,7 +1526,6 @@ function applyZoom() {
 }
 
 function select(i, scroll) {
-  if (i >= 0 && pv3d) set3dPreview(false);   // editing happens in the flat view
   sel = i;
   renderPreview();
   renderList();
@@ -1532,7 +1598,7 @@ function startDrag(ev, wrap, e, i) {
 }
 // Empty part of the mat: deselect, or move the poster image in "Move image" mode.
 function stageDown(ev) {
-  if (pv3d) { orbit3d(ev); return; }
+  if (pv3d) { down3d(ev); return; }
   if (posterMode && poster.img) {
     ev.preventDefault();
     const pv = $('#preview');
@@ -1596,7 +1662,9 @@ function moveLayer(how) {
 function syncNums() {
   const e = scene[sel], box = $('#inspector');
   if (!e || box.hidden) return;
-  for (const k of ['x', 'y', 'w', 'h']) { const inp = box.querySelector(`[data-k=${k}]`); if (inp && document.activeElement !== inp) inp.value = (e[k] * 100).toFixed(1); }
+  for (const k of ['x', 'y', 'w', 'h', 'z']) { const inp = box.querySelector(`[data-k=${k}]`); if (inp && document.activeElement !== inp) inp.value = ((e[k] || 0) * 100).toFixed(1); }
+  for (const k of ['a', 'b']) { const inp = box.querySelector(`[data-k=${k}]`); if (inp && document.activeElement !== inp) inp.value = Math.round(e[k] || 0); }
+  const lift = box.querySelector('[data-lift]'); if (lift && document.activeElement !== lift) { lift.value = Math.round((e.z || 0) * 100); box.querySelector('[data-liftv]').textContent = lift.value + '%'; }
   const ri = box.querySelector('[data-k=r]'); if (ri && document.activeElement !== ri) ri.value = Math.round(e.r || 0);
 }
 function renderInspector() {
@@ -1626,7 +1694,7 @@ function renderInspector() {
         <label class="toggle"><input type="radio" name="mshow" data-mshow="0" ${(e.f & STAND) ? '' : 'checked'}><span>In a box, like a picture</span></label></div>
       <div class="field" data-viewbox ${e.url ? '' : 'hidden'}><span>Position the model</span>
       <div class="m-pick"><model-viewer data-view camera-controls touch-action="none" interaction-prompt="none" shadow-intensity="0.8" environment-image="neutral"></model-viewer></div>
-      ${['Turn', 'Tip forward or back', 'Tip sideways'].map((lab, k) => `<div class="m-rot"><span>${lab}</span>
+      ${['Turn', 'Tip forward or back', 'Tip sideways'].map((lab, k) => `<div class="m-rot${k ? ' adv-only' : ''}"><span>${lab}</span>
         <button class="btn" type="button" data-q="${k}" data-d="-90" aria-label="${lab} −90°">−90</button><button class="btn" type="button" data-q="${k}" data-d="-15" aria-label="${lab} −15°">−15</button>
         <label class="deg"><input type="number" step="1" data-qv="${k}" aria-label="${lab} in degrees" value="${(e.q || [0, 0, 0])[k]}">°</label>
         <button class="btn" type="button" data-q="${k}" data-d="15" aria-label="${lab} +15°">+15</button><button class="btn" type="button" data-q="${k}" data-d="90" aria-label="${lab} +90°">+90</button></div>`).join('')}
@@ -1641,19 +1709,27 @@ function renderInspector() {
       : OPTS[o].choice
       ? `<div class="field"><span>When it's tapped</span>${PLAY.map(c => `<label class="toggle"><input type="radio" name="play" data-play="${c.bit}" ${((e.f || 0) & (OPEN | FULL)) === c.bit ? 'checked' : ''}><span>${c.label}</span></label>`).join('')}${e.t === 'g' ? '<small class="hint" style="margin:0">Google Drive videos play in Google\'s own player, which can\'t start by itself or loop (unless the site has a Drive API key: see Check this link). For a video that starts by itself, use OneDrive or a video file on GitHub. Full-screen works best: Google\'s player is heavy and can slow the tracking on some phones.</small>' : e.t === 'o' ? '<small class="hint" style="margin:0">Full-screen works best for embed codes: OneDrive\'s player is heavy, and on the poster it can slow the tracking on some phones.</small>' : ''}</div>`
       : `<label class="toggle"><input type="checkbox" data-opt="${o}" ${((e.f || 0) & OPTS[o].bit) ? 'checked' : ''}><span>${OPTS[o].label}</span></label>`).join('')}
-    <div class="field"><span>Turn</span>
+    ${isStand(e) ? '' : `<div class="field"><span>Turn</span>
       <div class="row turn-row">
         <button class="btn" type="button" data-turn="-15" title="Turn left 15°">⟲ 15°</button>
         <label class="deg"><input type="number" step="1" data-k="r" aria-label="Angle in degrees">°</label>
         <button class="btn" type="button" data-turn="15" title="Turn right 15°">15° ⟳</button>
         <button class="btn" type="button" data-turn="0">Straighten</button>
       </div>
-    </div>
-    <details><summary>Exact position and size</summary>
-      <p class="hint" style="margin-bottom:6px">As a percentage of the poster's width.</p>
+    </div>`}
+    ${e.t === 'm' ? '' : `<div class="field"><span>How it sits</span>
+      <label class="toggle"><input type="radio" name="sit" data-sit="0" ${(e.a || 0) === 0 ? 'checked' : ''}><span>Lies flat on the poster</span></label>
+      <label class="toggle"><input type="radio" name="sit" data-sit="90" ${(e.a || 0) !== 0 ? 'checked' : ''}><span>Stands up${(e.a || 0) !== 0 && e.a !== 90 ? ' (tilted ' + Math.round(e.a) + '°)' : ''}</span></label></div>`}
+    <div class="field"><span>Height above the poster</span>
+      <div class="row lift-row"><input type="range" min="0" max="100" step="1" data-lift value="${Math.round((e.z || 0) * 100)}" aria-label="Height above the poster, as a percentage of its width"><output data-liftv>${Math.round((e.z || 0) * 100)}%</output></div>
+      ${pv3d ? '' : '<button class="btn link-btn" type="button" data-act="see3d">See it in 3D</button>'}</div>
+    <details class="adv-only"><summary>Fine tune</summary>
+      <p class="hint" style="margin-bottom:6px">Sizes and heights as a percentage of the poster's width; angles in degrees.</p>
       <div class="nums">
         <label>Left<input type="number" step="0.5" data-k="x"></label><label>Top<input type="number" step="0.5" data-k="y"></label>
         <label>Width<input type="number" step="0.5" min="2" data-k="w"></label><label>Height<input type="number" step="0.5" min="2" data-k="h"></label>
+        <label>Above the poster<input type="number" step="0.5" min="0" data-k="z"></label>
+        ${e.t === 'm' ? '' : '<label>Tilt (0 flat, 90 standing)<input type="number" step="1" data-k="a"></label><label>Lean<input type="number" step="1" data-k="b"></label>'}
       </div>
     </details>
     <div class="field" style="margin-top:12px"><span>Layer <small class="hint" style="font-weight:400">(${scene.length - sel} of ${scene.length}, from the top)</small></span>
@@ -1682,6 +1758,12 @@ function renderInspector() {
         const v = parseFloat(inp.value);
         if (isNaN(v)) return;
         e[k] = Math.max(k === 'w' || k === 'h' ? 0.02 : -5, v / 100);
+      } else if (k === 'z') {
+        const v = parseFloat(inp.value); if (isNaN(v)) return;
+        e.z = Math.max(0, Math.min(3, v / 100)); if (!e.z) delete e.z;
+      } else if (k === 'a' || k === 'b') {
+        const v = parseFloat(inp.value); if (isNaN(v)) return;
+        e[k] = ((Math.round(v) % 360) + 540) % 360 - 180; if (!e[k]) delete e[k];
       } else {
         e[k] = inp.value.trim();
         if (k === 'url' && e.t === 'i') e._fit = true;
@@ -1696,6 +1778,11 @@ function renderInspector() {
       renderPreview(); renderList(); changed(false);
     });
   });
+  // How it sits (flat or standing) and its height above the poster.
+  box.querySelectorAll('input[data-sit]').forEach(rb => { rb.onchange = () => { const a = +rb.dataset.sit; if (a) e.a = a; else delete e.a; renderPreview(); changed(false); syncNums(); }; });
+  const liftIn = box.querySelector('[data-lift]');
+  if (liftIn) liftIn.addEventListener('input', () => { const v = +liftIn.value / 100; if (v) e.z = v; else delete e.z; box.querySelector('[data-liftv]').textContent = liftIn.value + '%'; renderPreview(); changed(false); syncNums(); });
+  const see = box.querySelector('[data-act=see3d]'); if (see) see.onclick = () => set3dPreview(true);
   box.querySelectorAll('[data-turn]').forEach(b => {
     b.onclick = () => {
       const t = +b.dataset.turn;
@@ -1959,7 +2046,18 @@ function initEditor() {
   $('#zoomIn').onclick = () => { zoomF = Math.min(3, zoomF * 1.2); applyZoom(); };
   $('#zoomOut').onclick = () => { zoomF = Math.max(0.4, zoomF / 1.2); applyZoom(); };
   $('#zoomFit').onclick = () => { zoomF = 1; applyZoom(); };
+  // Simple / Advanced: how many options the item settings show (Simple at first; remembered here).
+  const setMode = adv => {
+    document.body.classList.toggle('adv', adv);
+    document.querySelectorAll('.mode-switch button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.mode === 'adv') === adv)));
+    try { localStorage.setItem('arMode', adv ? 'adv' : 'simple'); } catch (e) {}
+  };
+  let adv = false; try { adv = localStorage.getItem('arMode') === 'adv'; } catch (e) {}
+  setMode(adv);
+  document.querySelectorAll('.mode-switch button').forEach(b => { b.onclick = () => setMode(b.dataset.mode === 'adv'); });
   $('#view3d').onclick = () => set3dPreview(!pv3d);
+  $('#pv3dBar').querySelectorAll('[data-cam]').forEach(b => { b.onclick = () => setView(b.dataset.cam); });
+  $('#pv3dHandles').addEventListener('pointerdown', ev => down3d(ev));
   addEventListener('resize', () => { if (pv3d) apply3d(); });
   addEventListener('resize', () => { if (!$('#editor').hidden) applyZoom(); });
 
@@ -2071,7 +2169,7 @@ function loadYouTubeApi() {
 function clearMedia() {
   ytPlayers.forEach(p => { try { p.player && p.player.destroy(); } catch (e) {} if (p.host) p.host.remove(); });
   ytPlayers = []; ytQueue = []; autoStarted = false;
-  $('#layer').innerHTML = '';
+  $('#layer').innerHTML = ''; $('#layer3d').innerHTML = '';
 }
 function addUnmute(wrap, fn) {
   if (wrap.querySelector('.unmute')) return;
@@ -2148,12 +2246,19 @@ function startAutoplay() {
 }
 
 
+// The poster's overlays: flat on the poster (#layer), placed in 3D (#layer3d) and standing models (#stand3d).
+const layerEls = sel => [...$('#layer').querySelectorAll(sel), ...$('#layer3d').querySelectorAll(sel)];
+function showOverlays(v) { for (const id of ['layer', 'layer3d', 'stand3d']) $('#' + id).style.visibility = v ? 'visible' : 'hidden'; }
 function buildLayer() {
   modelsSpinning = null;
   clearMedia();
   const layer = $('#layer'), g = geo();
   layer.style.width = UNIT + 'px'; layer.style.height = UNIT * g.Hf + 'px';
-  (scene || []).filter(e => !problem(e)).forEach(e => layer.appendChild(makeEl(e, true))); // skip unfinished items
+  // Skip unfinished items. Items raised or stood up go in their own layer, each placed in 3D (33-space).
+  (scene || []).filter(e => !problem(e)).forEach(e => {
+    const w = makeEl(e, true);
+    if (isFlat3d(e)) { w.dataset.k = scene.indexOf(e); $('#layer3d').appendChild(w); } else layer.appendChild(w);
+  });
   const yt = ytQueue.slice();
   setupYouTube();
   layerStand = setupStandModels();
@@ -2167,10 +2272,10 @@ function trackLayerMedia(yt) {
   const layer = $('#layer'), once = (n, evs) => new Promise(r => evs.forEach(ev => n.addEventListener(ev, r, { once: true })));
   let n = 0;
   if (layerStand && Array.isArray(scene) && scene.some(isStand)) { n++; boot.wait(layerStand, 3, 20000); }
-  layer.querySelectorAll('img').forEach(i => { if (!i.complete) { n++; boot.wait(once(i, ['load', 'error']), 1); } });
-  layer.querySelectorAll('iframe').forEach(f => { n++; boot.wait(once(f, ['load', 'error']), 2); });
-  layer.querySelectorAll('model-viewer').forEach(m => { n++; boot.wait(once(m, ['load', 'error']), 2, 15000); });
-  layer.querySelectorAll('video,audio').forEach(m => { if (m.readyState < 1) { n++; boot.wait(once(m, ['loadedmetadata', 'error']), 1); } });
+  layerEls('img').forEach(i => { if (!i.complete) { n++; boot.wait(once(i, ['load', 'error']), 1); } });
+  layerEls('iframe').forEach(f => { n++; boot.wait(once(f, ['load', 'error']), 2); });
+  layerEls('model-viewer').forEach(m => { n++; boot.wait(once(m, ['load', 'error']), 2, 15000); });
+  layerEls('video,audio').forEach(m => { if (m.readyState < 1) { n++; boot.wait(once(m, ['loadedmetadata', 'error']), 1); } });
   if (yt && yt.length) {
     n += yt.length;
     boot.wait(loadYouTubeApi().then(() => new Promise(r => {
@@ -2331,7 +2436,7 @@ function makeStage(canvas) {
       const r = (e.r || 0) * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r);
       const B = new T.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
       const Rz = new T.Matrix4().set(c, -sn, 0, 0, sn, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
-      it.stand.matrix.copy(new T.Matrix4().makeTranslation(e.x + e.w / 2, e.y + e.h / 2, 0).multiply(Rz).multiply(B));
+      it.stand.matrix.copy(new T.Matrix4().makeTranslation(e.x + e.w / 2, e.y + e.h / 2, -(e.z || 0)).multiply(Rz).multiply(B));
       it.stand.matrixWorldNeedsUpdate = true;
       wantRender = true;
     },
@@ -2405,47 +2510,119 @@ async function setupStandModels() {
     $('#layer').querySelectorAll('.ar-el[data-mid]').forEach(w => showTrouble(w, "This browser couldn't start the 3D view. Updating the phone's software may help.", '3d', null, w.offsetWidth, w.offsetHeight));
   }
 }
-// Called with each new poster position (screen corners) and the camera picture's size.
-function standPose(pts, vw, vh) {
-  if (!viewStage || !viewStage.count) return;
-  const W = innerWidth, H = innerHeight, s = Math.max(W / vw, H / vh);
-  viewStage.setCorners(pts, PHONE_F * Math.max(vw, vh) * s, W, H);
+/* ---------- Items in 3D space ----------
+   Every item can be raised above the poster (z: height, in frame widths), stood up (a: tilt in degrees,
+   0 = lying flat on the poster, 90 = standing up on its bottom edge) and leaned (b: turned within its
+   own surface), on top of its place (x, y), turn (r) and size (w, h). All zero = lying flat, as always.
+   A flat item that is raised or tilted is still an ordinary page element (so videos and buttons keep
+   working): its four corners are worked out in 3D, seen through the camera, and the element is
+   stretched onto them with a CSS perspective transform, one per item.
+   Poster coordinates: frame widths, x right, y down the poster, z into the paper (up = -z).
+   A camera: { M (poster axes seen from the camera, as columns), t, f (focal length, px), W, H }. */
+const isFlat3d = e => !isStand(e) && !!(e.z || e.a || e.b);
+const D2R = Math.PI / 180;
+// The item's corners in 3D (top-left, top-right, bottom-right, bottom-left).
+function flatCorners(e) {
+  const r = (e.r || 0) * D2R, a = (e.a || 0) * D2R, b = (e.b || 0) * D2R;
+  const cr = Math.cos(r), sr = Math.sin(r), ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+  const cx = e.x + e.w / 2, cy = e.y + e.h / 2, z = -(e.z || 0);
+  // Turned on the poster about the item's middle; it stands up (tilts) about its bottom edge.
+  const ax = cx + (-sr) * (e.h / 2), ay = cy + cr * (e.h / 2);          // middle of the bottom edge
+  return [[0, 0], [e.w, 0], [e.w, e.h], [0, e.h]].map(([u, v]) => {
+    let du = u - e.w / 2, dv = v - e.h;                                 // from the bottom edge's middle
+    [du, dv] = [du * cb - dv * sb, du * sb + dv * cb];                  // lean, within its surface
+    const lx = du, ly = dv * ca, lz = dv * sa;                          // tilted up out of the paper
+    return [ax + lx * cr - ly * sr, ay + lx * sr + ly * cr, z + lz];
+  });
 }
-
-/* ---------- The editor's 3D preview ----------
-   Shows the poster from an angle (as if lying on a table), with standing models in 3D. Drag to look
-   around, zoom with + and −. A pretend camera: its position gives the poster's corners on screen (for
-   the flat items, moved with the same kind of transform as in the viewer) and the 3D camera. */
+function camProject(cam, P) {
+  const M = cam.M, c = [0, 1, 2].map(i => M[0][i] * P[0] + M[1][i] * P[1] + M[2][i] * P[2] + cam.t[i]);
+  return { x: cam.f * c[0] / c[2] + cam.W / 2, y: cam.f * c[1] / c[2] + cam.H / 2, z: c[2] };
+}
+// The camera from the frame's corners on screen (and a focal length).
+function camFromCorners(pts, f, W, H) {
+  const g = geo(), h = homography([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: g.Hf }, { x: 0, y: g.Hf }], pts);
+  if (!h) return null;
+  const p = poseFromH(h, f, W / 2, H / 2);
+  return { M: p.R, t: p.t, f, W, H };
+}
+// Put a flat item's element onto its place in 3D, as seen by the camera.
+function placeFlat3d(wrap, e, cam) {
+  const P = flatCorners(e).map(c => camProject(cam, c));
+  if (P.some(p => !(p.z > 0.01))) { wrap.style.visibility = 'hidden'; return; }   // behind the camera
+  const W = e.w * UNIT, H = e.h * UNIT;
+  const h = homography([{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], P);
+  if (!h) { wrap.style.visibility = 'hidden'; return; }
+  wrap.style.visibility = '';
+  Object.assign(wrap.style, { left: '0px', top: '0px', transformOrigin: '0 0', transform: toCss(h) });
+}
+// Where a screen point lands on the flat level at height `lift` (a ray from the camera).
+function rayToLevel(cam, sx, sy, lift) {
+  const M = cam.M, d = [(sx - cam.W / 2) / cam.f, (sy - cam.H / 2) / cam.f, 1];
+  // In poster coordinates: camera position C = -M^T t, direction M^T d.
+  const mt = v => [0, 1, 2].map(j => M[j][0] * v[0] + M[j][1] * v[1] + M[j][2] * v[2]);
+  const C = mt(cam.t).map(v => -v), dir = mt(d), z = -(lift || 0);
+  if (Math.abs(dir[2]) < 1e-6) return null;
+  const s = (z - C[2]) / dir[2];
+  if (s <= 0) return null;
+  return { x: C[0] + s * dir[0], y: C[1] + s * dir[1] };
+}
+// The point an item stands on (its base), in 3D: where the move/raise/turn handles go.
+function itemBase(e) {
+  if (isStand(e)) return [e.x + e.w / 2, e.y + e.h / 2, -(e.z || 0)];
+  const c = flatCorners(e);
+  return [(c[2][0] + c[3][0]) / 2, (c[2][1] + c[3][1]) / 2, (c[2][2] + c[3][2]) / 2];
+}
+function itemTop(e) {
+  if (isStand(e)) return [e.x + e.w / 2, e.y + e.h / 2, -(e.z || 0) - Math.max(e.w, e.h) * 0.8];
+  const c = flatCorners(e);
+  return [(c[0][0] + c[1][0]) / 2, (c[0][1] + c[1][1]) / 2, (c[0][2] + c[1][2]) / 2];
+}
+/* ---------- The editor's 3D view ----------
+   The poster seen from an angle (as if lying on a table), with everything in its place in 3D. Items
+   can still be picked and arranged here, with three simple handles instead of a full 3D gizmo:
+     drag the item       slides it around (at its height), like moving a toy across a table
+     ↕ handle            raises or lowers it
+     ⟲ handle            turns it
+     ⤢ handle            makes it bigger or smaller
+   Drag empty space to look around; the view buttons jump to set angles. A pretend camera gives both
+   the poster's corners on screen (flat items move with it) and the 3D camera for models. */
 let pv3d = null, editorStage = null, pv3dRaf = 0;
+const VIEWS = { front: [0, 89.9], angle: [20, 48], low: [0, 16], side: [90, 18] };
 function set3dPreview(on) {
   const pv = $('#preview'), b = $('#view3d');
   if (on && !pv3d) {
     if (typeof setPosterMode === 'function') setPosterMode(false);
-    if (sel >= 0) select(-1);
     pv3d = { az: 20, el: 48 };
-    pv.classList.add('pv3d'); b.setAttribute('aria-pressed', 'true'); b.textContent = '2D';
+    pv.classList.add('pv3d'); b.setAttribute('aria-pressed', 'true'); b.textContent = '2D view';
     if (!editorStage) editorStage = makeStage($('#pvStand'));
-    $('#pvStand').hidden = false;
-    $('#pv3dHint').hidden = false;
-    refresh3dPreview();
+    $('#pvStand').hidden = false; $('#pv3dBar').hidden = false;
+    renderPreview(); renderInspector();
     const loop = now => { if (!pv3d) return; editorStage.render(now); pv3dRaf = requestAnimationFrame(loop); };
     pv3dRaf = requestAnimationFrame(loop);
   } else if (!on && pv3d) {
     pv3d = null; cancelAnimationFrame(pv3dRaf);
-    pv.classList.remove('pv3d'); b.setAttribute('aria-pressed', 'false'); b.textContent = '3D preview';
-    $('#pvStand').hidden = true; $('#pv3dHint').hidden = true;
-    applyZoom();
+    pv.classList.remove('pv3d'); b.setAttribute('aria-pressed', 'false'); b.textContent = '3D view';
+    $('#pvStand').hidden = true; $('#pv3dBar').hidden = true; $('#pv3dHandles').hidden = true;
+    $('#pvLayer3d').innerHTML = '';
+    renderPreview(); renderInspector();
   }
+}
+function setView(name) {
+  if (!pv3d) set3dPreview(true);
+  [pv3d.az, pv3d.el] = VIEWS[name];
+  apply3d();
 }
 function refresh3dPreview() {
   if (!pv3d) return;
-  editorStage.setItems(scene.filter(e => isStand(e) && !problem(e))).then(() => apply3d()).catch(() => { $('#pv3dHint').textContent = "The 3D preview couldn't start in this browser."; });
+  editorStage.setItems(scene.filter(e => isStand(e) && !problem(e))).then(() => apply3d())
+    .catch(() => { $('#pv3dMsg').textContent = "3D models can't be shown in this browser."; });
   apply3d();
 }
 function apply3d() {
   if (!pv3d) return;
   const g = geo(), pv = $('#preview'), W = pv.clientWidth, H = pv.clientHeight;
-  const f = 0.9 * Math.max(W, H), az = pv3d.az * Math.PI / 180, el = Math.min(89.9, pv3d.el) * Math.PI / 180;
+  const f = 0.9 * Math.max(W, H), az = pv3d.az * D2R, el = Math.min(89.9, pv3d.el) * D2R;
   const C = [0.5, g.Hf / 2, 0];
   const span = Math.max((1 + 2 * g.M) * f / (0.8 * W), (g.Hf + 2 * g.M) * f / (0.75 * H));
   const d = span / zoomF;
@@ -2454,22 +2631,97 @@ function apply3d() {
   const sub = (a, b) => a.map((v, i) => v - b[i]), nrm = v => { const k = Math.hypot(...v); return v.map(x => x / k); };
   const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const fwd = nrm(sub(C, P)), right = nrm(cross(fwd, [0, 0, -1])), down = cross(fwd, right);
-  const Rrows = [right, down, fwd], t = Rrows.map(r => -(r[0] * P[0] + r[1] * P[1] + r[2] * P[2]));
-  const proj = (x, y) => { const c = Rrows.map((r, i) => r[0] * x + r[1] * y + t[i]); return { x: f * c[0] / c[2] + W / 2, y: f * c[1] / c[2] + H / 2 }; };
-  const corners = [proj(0, 0), proj(1, 0), proj(1, g.Hf), proj(0, g.Hf)];
+  const rows = [right, down, fwd], t = rows.map(r => -(r[0] * P[0] + r[1] * P[1] + r[2] * P[2]));
+  // Columns: the poster's axes seen from the camera.
+  const cam = pv3d.cam = { M: [[right[0], down[0], fwd[0]], [right[1], down[1], fwd[1]], [right[2], down[2], fwd[2]]], t, f, W, H };
+  const corners = [[0, 0], [1, 0], [1, g.Hf], [0, g.Hf]].map(([x, y]) => camProject(cam, [x, y, 0]));
   const h = homography(frameModel(), corners);
   if (h) $('#pvLayer').style.transform = toCss(h);
-  // Columns of the rotation (poster axes seen from the camera) for the 3D drawing.
-  const R = [[right[0], down[0], fwd[0]], [right[1], down[1], fwd[1]], [right[2], down[2], fwd[2]]];
-  editorStage.setCamera(R, t, f, W, H);
+  $('#pvLayer3d').querySelectorAll('.ar-el').forEach(w => { const e = scene[+w.dataset.i]; if (e) placeFlat3d(w, e, cam); });
+  for (const e of scene) if (isStand(e)) editorStage.place(e);
+  editorStage.setCamera(cam.M, t, f, W, H);
+  draw3dHandles();
 }
-// Dragging on the preview in 3D mode looks around the poster.
+// The handles for the selected item, placed around where it stands.
+function draw3dHandles() {
+  const box = $('#pv3dHandles'), e = scene[sel];
+  if (!pv3d || !e || !pv3d.cam) { box.hidden = true; return; }
+  const cam = pv3d.cam, B = camProject(cam, itemBase(e)), T = camProject(cam, itemTop(e));
+  if (!(B.z > 0 && T.z > 0)) { box.hidden = true; return; }
+  box.hidden = false;
+  const put = (k, x, y) => { const n = box.querySelector(`[data-h="${k}"]`); n.style.left = x + 'px'; n.style.top = y + 'px'; };
+  const topY = Math.min(T.y, B.y) - 34;
+  put('base', B.x, B.y);
+  put('lift', T.x, topY);
+  put('turn', B.x + 52, B.y + 6);
+  put('size', B.x - 52, B.y + 6);
+  $('#pv3dHandles .h-stem').style.cssText = `left:${T.x}px;top:${topY}px;height:${Math.max(0, B.y - topY)}px`;
+}
+// Pointer down on the preview in 3D: a handle, an item (pick it and slide it), or empty space (look around).
+function down3d(ev, i) {
+  if (ev.target.closest && ev.target.closest('#pv3dBar')) return;   // the view buttons handle themselves
+  ev.preventDefault(); ev.stopPropagation();
+  const pv = $('#preview'), r = pv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top;
+  const knob = ev.target.closest && ev.target.closest('[data-h]');
+  if (knob && sel >= 0 && knob.dataset.h !== 'base') return drag3d(ev, scene[sel], knob.dataset.h);
+  if (i === undefined) {
+    const m = editorStage && editorStage.hit(sx, sy, r.width, r.height);
+    if (m) i = scene.indexOf(m);
+  }
+  if (i !== undefined && i >= 0) { if (sel !== i) select(i); return drag3d(ev, scene[i], 'move'); }
+  orbit3d(ev);
+}
+function drag3d(ev, e, what) {
+  const pv = $('#preview'), r = pv.getBoundingClientRect(), cam = pv3d.cam;
+  pv.setPointerCapture(ev.pointerId);
+  const o = { x: e.x, y: e.y, w: e.w, h: e.h, r: e.r || 0, z: e.z || 0 };
+  const sx = ev.clientX - r.left, sy = ev.clientY - r.top;
+  const p0 = rayToLevel(cam, sx, sy, o.z);
+  const B = camProject(cam, itemBase(e)), U = camProject(cam, itemBase(e).map((v, k) => k === 2 ? v - 0.1 : v));
+  const up = [U.x - B.x, U.y - B.y], up2 = up[0] * up[0] + up[1] * up[1] || 1;
+  const d0 = Math.hypot(sx - B.x, sy - B.y) || 1;
+  let moved = false;
+  const move = m => {
+    const x = m.clientX - r.left, y = m.clientY - r.top;
+    if (Math.abs(x - sx) + Math.abs(y - sy) > 3) moved = true;
+    if (what === 'move' && p0) {
+      const p = rayToLevel(cam, x, y, o.z); if (!p) return;
+      e.x = snap(o.x + p.x - p0.x); e.y = snap(o.y + p.y - p0.y);
+    } else if (what === 'lift') {
+      const dz = ((x - sx) * up[0] + (y - sy) * up[1]) / up2 * 0.1;
+      e.z = Math.max(0, Math.min(3, Math.round((o.z + dz) * 200) / 200)); if (!e.z) delete e.z;
+    } else if (what === 'turn') {
+      let a = o.r + (x - sx) * 0.6;
+      a = m.shiftKey ? Math.round(a) : Math.round(a / 15) * 15;
+      e.r = ((a % 360) + 540) % 360 - 180; if (e.r === -180) e.r = 180;
+    } else if (what === 'size') {
+      const k = Math.max(0.1, Math.min(10, Math.hypot(x - B.x, y - B.y) / d0));
+      const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+      e.w = snap(Math.max(0.02, Math.min(3, o.w * k))); e.h = snap(Math.max(0.02, Math.min(3, o.h * k)));
+      e.x = cx - e.w / 2; e.y = cy - e.h / 2;
+    }
+    apply3d(); syncNums();
+  };
+  const end = () => {
+    pv.removeEventListener('pointermove', move); pv.removeEventListener('pointerup', end); pv.removeEventListener('pointercancel', end);
+    if (moved) { renderPreview(); changed(false); }
+  };
+  pv.addEventListener('pointermove', move); pv.addEventListener('pointerup', end); pv.addEventListener('pointercancel', end);
+}
+// Dragging empty space looks around the poster (a tap on empty space unselects).
 function orbit3d(ev) {
-  ev.preventDefault();
   const pv = $('#preview'); pv.setPointerCapture(ev.pointerId);
-  let x = ev.clientX, y = ev.clientY;
-  const move = m => { pv3d.az -= (m.clientX - x) * 0.4; pv3d.el = Math.max(8, Math.min(89.9, pv3d.el + (m.clientY - y) * 0.3)); x = m.clientX; y = m.clientY; apply3d(); };
-  const up = () => { pv.removeEventListener('pointermove', move); pv.removeEventListener('pointerup', up); pv.removeEventListener('pointercancel', up); };
+  let x = ev.clientX, y = ev.clientY, moved = false;
+  const sx = x, sy = y;
+  const move = m => {
+    if (Math.abs(m.clientX - sx) + Math.abs(m.clientY - sy) > 3) moved = true;
+    pv3d.az -= (m.clientX - x) * 0.4; pv3d.el = Math.max(8, Math.min(89.9, pv3d.el + (m.clientY - y) * 0.3));
+    x = m.clientX; y = m.clientY; apply3d();
+  };
+  const up = () => {
+    pv.removeEventListener('pointermove', move); pv.removeEventListener('pointerup', up); pv.removeEventListener('pointercancel', up);
+    if (!moved && sel >= 0) select(-1);
+  };
   pv.addEventListener('pointermove', move); pv.addEventListener('pointerup', up); pv.addEventListener('pointercancel', up);
 }
 /* ---------- Finding the poster's black frame ----------
@@ -3792,7 +4044,7 @@ function verifyPoster(pts, now) {
 }
 function setOtherPoster(on) {
   pc.other = on; pc.bad = 0;
-  if (on) { $('#layer').style.visibility = 'hidden'; $('#stand3d').style.visibility = 'hidden'; }
+  if (on) showOverlays(false);
   const n = $('#hudNote');
   if (on) { clearTimeout(showNote.timer); n.textContent = 'This looks like a different poster. Move closer to its QR code to open it.'; n.hidden = false; }
   else n.hidden = true;
@@ -3833,7 +4085,7 @@ async function switchPoster(d) {
     shapeIdx = u.shape; layout = u.layout; scene = u.els; packed = d;
     history.replaceState(null, '', location.pathname + location.search + '#d=' + d);   // (no reload)
     resetTracking(); lastSeen = 0; adviceShown = false; setOtherPoster(false);
-    $('#layer').style.visibility = 'hidden'; $('#stand3d').style.visibility = 'hidden';
+    showOverlays(false);
     buildLayer();
     showNote('New poster found');
   } catch (e) { showNote("Found another poster, but couldn't read its link."); }
@@ -4025,8 +4277,13 @@ function onDetect(r, now) {
   if (h) {
     const layer = $('#layer');
     layer.style.transform = toCss(h);
-    layer.style.visibility = pc.other ? 'hidden' : 'visible';
-    if (viewStage && viewStage.count) { $('#stand3d').style.visibility = pc.other ? 'hidden' : 'visible'; standPose(pose, r.vw, r.vh); }
+    showOverlays(!pc.other);
+    // Items in 3D: the camera's position from the poster's corners (and a typical phone lens).
+    const W = innerWidth, H = innerHeight, cam = camFromCorners(pose, PHONE_F * Math.max(r.vw, r.vh) * Math.max(W / r.vw, H / r.vh), W, H);
+    if (cam) {
+      $('#layer3d').querySelectorAll('.ar-el[data-k]').forEach(w => { const e = scene[+w.dataset.k]; if (e) placeFlat3d(w, e, cam); });
+      if (viewStage && viewStage.count) viewStage.setCamera(cam.M, cam.t, cam.f, W, H);
+    }
   }
   lastSeen = now;
   lastSource = r.src;
@@ -4061,7 +4318,7 @@ function tick() {
   showGuide(!held && (!lastSeen || now - lastSeen > 700), now);
   // Standing 3D models: redrawn while the poster is in view (dimmed with the rest when it's lost).
   if (viewStage && viewStage.count && layer.style.visibility === 'visible' && !layer.classList.contains('lost')) viewStage.render(now);
-  $('#stand3d').classList.toggle('lost', layer.classList.contains('lost'));
+  $('#stand3d').classList.toggle('lost', layer.classList.contains('lost')); $('#layer3d').classList.toggle('lost', layer.classList.contains('lost'));
   if (now < noteUntil) setStatus(note);
   else if (held) setStatus('Holding position — tap Resume to track again.');
   else if (!lastSeen) setStatus(Array.isArray(scene) ? 'Looking for the poster…' : 'Point at the QR code on a poster.');
@@ -4114,10 +4371,10 @@ let camAttempt = 0; // bumps to cancel an in-progress start
 // take time from the tracking while it's searching.
 let modelsSpinning = null;
 function spinModels(on) {
-  on = on && $('#layer').style.visibility !== 'hidden';
+  on = on && $('#layer').style.visibility === 'visible';
   if (on === modelsSpinning) return;
   modelsSpinning = on;
-  $('#layer').querySelectorAll('model-viewer[data-spin]').forEach(m => { if (on) m.setAttribute('auto-rotate', ''); else m.removeAttribute('auto-rotate'); });
+  layerEls('model-viewer[data-spin]').forEach(m => { if (on) m.setAttribute('auto-rotate', ''); else m.removeAttribute('auto-rotate'); });
 }
 
 // The aiming guide: an outline of the whole poster (its shape, black frame and QR corner), shown while
@@ -4435,12 +4692,12 @@ async function route() {
       catch (e) { $('#startMsg').textContent = "This scene link couldn't be read. " + (e.message.includes('version') ? e.message : 'It may be incomplete.'); }
     }
     held = false; $('#holdBtn').textContent = 'Hold';
-    $('#layer').style.visibility = 'hidden'; $('#stand3d').style.visibility = 'hidden';
+    showOverlays(false);
     $('#startPanel').hidden = false;
     const yt = buildLayer();
     // The poster's videos and pictures: wait for them behind the loading screen (shown again when
     // arriving from the editor).
-    const hasMedia = $('#layer').querySelector('img,iframe,video,audio,model-viewer') || (Array.isArray(scene) && scene.some(isStand)) || yt.length;
+    const hasMedia = layerEls('img,iframe,video,audio,model-viewer').length || (Array.isArray(scene) && scene.some(isStand)) || yt.length;
     if (hasMedia && !document.body.classList.contains('booting')) { boot.show('Loading the poster…'); trackLayerMedia(yt); boot.end(); }
     else if (hasMedia) trackLayerMedia(yt);
   } else {
