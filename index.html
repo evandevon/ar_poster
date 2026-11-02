@@ -7,6 +7,7 @@
      restricted to this page's address (…github.io/ar_poster/*) accepts them. -->
 <meta name="referrer" content="no-referrer-when-downgrade">
 <title>Poster AR</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&display=swap" rel="stylesheet">
@@ -114,6 +115,12 @@
     background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px; }
   @media (max-width: 900px) { #preview { min-height: 62vh; } }
   #pvLayer { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #pvStand { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #preview.pv3d { cursor: grab; }
+  #preview.pv3d .ar-el, #preview.pv3d .ar-sel { pointer-events: none; }
+  #preview.pv3d .ar-sel, #preview.pv3d .ar-el[data-stand] { display: none; }
+  .pv3d-hint { position: absolute; left: 14px; top: 12px; margin: 0; padding: 6px 12px; border-radius: 999px; background: #000000a6; color: #fff; font-size: 14px; pointer-events: none; }
+  .m-rot .deg { display: inline-flex; align-items: center; gap: 3px; }
   #pvPoster { position: absolute; display: block; box-shadow: 0 6px 18px #0006; }
   #preview.posterMode { cursor: move; }
   #preview.posterMode .ar-el { pointer-events: none; opacity: .35; }
@@ -170,7 +177,12 @@
   /* 3D models */
   .ar-el model-viewer.el-model { width: 100%; height: 100%; display: block; background: transparent; pointer-events: none; --poster-color: transparent; --progress-bar-color: transparent; }
   .ar-el.tappable { cursor: pointer; }
+  .ar-el .el-stand { width: 100%; height: 100%; }
   .m-pick { height: 220px; border: 2px solid var(--line, #111); border-radius: 12px; background: radial-gradient(circle at 50% 40%, #fff, #e4e8e5); overflow: hidden; }
+  .m-rot { display: flex; align-items: center; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+  .m-rot > span { flex: 1 1 100%; font-size: 14px; font-weight: 600; }
+  .m-rot .btn { padding: 2px 8px; min-height: 34px; }
+  .m-rot .deg input { width: 4.2em; }
   .m-pick model-viewer { width: 100%; height: 100%; --poster-color: transparent; }
   .m-badge { position: absolute; left: 50%; bottom: 3%; transform: translateX(-50%); display: flex; align-items: center; gap: .35em; white-space: nowrap;
     background: #000000b3; color: #fff; border-radius: 999px; padding: .25em .8em; font-weight: 700; pointer-events: none; }
@@ -287,11 +299,31 @@
   #guideMsg { margin: 0; max-width: 340px; text-align: center; color: #fff; font: 700 17px/1.35 var(--ui); background: #000000b0; padding: 8px 14px; border-radius: 12px; }
   #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   #layer { position: absolute; left: 0; top: 0; transform-origin: 0 0; visibility: hidden; transition: opacity .3s; }
-  #layer.lost { opacity: .4; }
-  #hud { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; gap: 6px; align-items: center; padding: 6px 6px 6px 14px;
-    background: #000000b3; color: #fff; z-index: 2; border-radius: 999px; backdrop-filter: blur(6px); }
-  #status { flex: 1; font-size: 14px; line-height: 1.3; }
-  #recBtn { border-color: #ff6b6b !important; color: #ffb3b3 !important; }
+  #layer.lost, #stand3d.lost { opacity: .4; }
+  #stand3d { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; visibility: hidden; transition: opacity .3s; }
+  #hud { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; gap: 6px; align-items: flex-start; justify-content: space-between; z-index: 3; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  .hud-btns { display: flex; gap: 6px; padding: 6px; background: #000000b3; border-radius: 999px; backdrop-filter: blur(6px); }
+  #hud #statsBtn { min-height: 0; border: 0; padding: 10px 8px; background: none; color: #ffffff8c; font: 500 12px var(--ui); letter-spacing: .04em; text-shadow: 0 1px 3px #000c; }
+  #hud #statsBtn:hover, #hud #statsBtn[aria-expanded="true"] { color: #fff; background: none; }
+  #statsPanel { position: absolute; right: 10px; top: 56px; z-index: 3; width: min(300px, calc(100% - 20px)); padding: 10px 12px; border-radius: 12px;
+    background: #000000c7; color: #fff; backdrop-filter: blur(6px); font-size: 13px; line-height: 1.35; }
+  #statsPanel[hidden] { display: none; }
+  #status { display: block; }
+  .stats-row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+  #statsPanel button { min-height: 34px; padding: 4px 12px; border-radius: 999px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
+  #posterOffer { position: absolute; left: 50%; bottom: max(70px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 4; width: min(360px, calc(100% - 32px));
+    background: #fff; color: #111; border-radius: 14px; padding: 12px 14px; box-shadow: 0 6px 30px #0007; font: 500 16px/1.35 var(--ui); }
+  #posterOffer[hidden] { display: none; }
+  #posterOffer p { margin: 0 0 10px; }
+  #posterOffer div { display: flex; gap: 10px; justify-content: flex-end; }
+  #posterOffer a, #posterOffer button { min-height: 44px; padding: 0 16px; border-radius: 10px; font: 600 16px var(--ui); display: inline-flex; align-items: center; text-decoration: none; border: 0; }
+  #posterOffer a { background: #111; color: #fff; }
+  #posterOffer button { background: #eee; color: #111; }
+  #hudNote { position: absolute; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3; max-width: calc(100% - 32px);
+    padding: 8px 16px; border-radius: 999px; background: #000000c7; color: #fff; font: 600 15px var(--ui); text-align: center; pointer-events: none; }
+  #hudNote[hidden] { display: none; }
+  #statsPanel #recBtn { border-color: #ff6b6b !important; color: #ffb3b3 !important; }
   #recBtn.on { background: #c62828 !important; color: #fff !important; }
   #hud button { min-height: 36px; padding: 4px 12px; border-radius: 999px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
   #hud button:hover { background: #ffffff26; }
@@ -428,12 +460,14 @@ const boot = (() => {
 
   <div class="workspace">
     <section class="stage-wrap" aria-label="Poster">
-      <div id="preview"><div id="pvLayer"><canvas id="pvPoster"></canvas></div></div>
+      <div id="preview"><div id="pvLayer"><canvas id="pvPoster"></canvas></div><canvas id="pvStand" hidden aria-hidden="true"></canvas>
+        <p id="pv3dHint" class="pv3d-hint" hidden>3D preview: drag to look around the poster. Press 2D to edit.</p></div>
       <div class="stage-chip" id="posterChip" hidden>Drag to move your poster image <button class="btn" id="posterDone">Done</button></div>
       <div class="stage-tools" role="group" aria-label="Zoom">
         <button class="btn" id="zoomOut" aria-label="Zoom out">−</button>
         <button class="btn" id="zoomFit">Fit</button>
         <button class="btn" id="zoomIn" aria-label="Zoom in">+</button>
+        <button class="btn" id="view3d" aria-pressed="false" title="See the poster from an angle, with 3D models standing on it">3D preview</button>
       </div>
     </section>
 
@@ -504,14 +538,25 @@ const boot = (() => {
 <div id="viewer" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <div id="layer"></div>
+  <canvas id="stand3d" aria-hidden="true"></canvas>
   <div id="guide" hidden aria-hidden="true"><svg id="guideSvg"></svg><p id="guideMsg"></p></div>
   <div id="hud">
-    <span id="status" aria-live="polite">Starting…</span>
-    <button id="holdBtn">Hold</button>
-    <button id="camBtn" title="Switch camera">Camera</button>
-    <button id="editBtn">Edit</button>
-    <button id="recBtn" hidden title="Record a tracking test to send to the developer">● Record test</button>
+    <div class="hud-btns">
+      <button id="holdBtn">Hold</button>
+      <button id="camBtn" title="Switch camera">Camera</button>
+      <button id="editBtn">Edit</button>
+    </div>
+    <button id="statsBtn" type="button" aria-expanded="false" aria-controls="statsPanel">stats</button>
   </div>
+  <!-- Tracking details (what it's following, pictures per second): tucked away unless asked for. -->
+  <div id="statsPanel" hidden>
+    <span id="status">Starting…</span>
+    <div class="stats-row">
+      <button id="recBtn" hidden title="Record a tracking test to send to the developer">● Record test</button>
+      <button id="statsHide" type="button">Hide</button>
+    </div>
+  </div>
+  <div id="hudNote" role="status" aria-live="polite" hidden></div>
   <div id="startPanel">
     <svg class="frame-icon" style="color:#fff"><use href="#i-frame"/></svg>
     <p id="startMsg">Point your camera at the poster.</p>
@@ -552,9 +597,16 @@ const boot = (() => {
    - Links carry a layout number (the QR size, see CUT): 7 = current, 3 to 6 = earlier posters.
      Old links keep their layout so posters already printed from them still work.
    - Media items have a big tap-to-play button over the whole item (Drive/OneDrive open full-screen).
-   - 3D models (.glb) use Google's <model-viewer>, downloaded only when a poster has one: shown on the
-     poster (optionally turning), and a tap opens them full-screen to turn, zoom and move with fingers. Files come from resources/models/, any web
+   - 3D models (.glb), downloaded only when a poster has one. "Stands up on the poster" (the default):
+     drawn in real 3D over the camera picture from the poster's position (32-stand3d), so seen from the
+     side it's seen from the side. "In a box": Google's <model-viewer> on the poster like a picture. Either
+     way a tap opens it full-screen to turn, zoom and move with fingers. The author turns/tips the model
+     in 15-degree steps, and the editor's "3D preview" shows the poster from an angle. One copy of
+     three.js is shared by both (the import map in <head>); it needs iOS 16.4+ or a recent Chrome. Files come from resources/models/, any web
      address that allows it, or Google Drive (through DRIVE_API_KEY, like sounds and video files).
+   - Several posters: while following one, its QR code is read now and then; a different poster's
+     scene loads in the same tab (camera still running). From too far to read the QR, the learned
+     picture shows it's a different poster: its overlays are hidden and people are asked to move closer.
    - Layers: items are drawn in scene order (later = in front); the editor's layer list and Layer
      buttons change the order.
 
@@ -638,14 +690,14 @@ const TYPES = {
   // Text links are no longer offered (a button does the same); older links still show them.
   l: { name: 'Text link', sub: 'Underlined words that open a web page', w: 0.4, h: 0.045, text: true, url: 'Link address', keep: false, hidden: true },
   i: { name: 'Picture', sub: 'A photo, drawing or GIF from the web', w: 0.32, h: 0.24, url: 'Picture address (PNG, JPG or GIF online)', keep: true },
-  m: { name: '3D model', sub: 'A 3D model people can turn and zoom with their fingers (.glb)', w: 0.4, h: 0.4, url: '3D model address (.glb or .gltf)', keep: true, opts: ['spin'] },
+  m: { name: '3D model', sub: 'A 3D model that stands on the poster; people can turn and zoom it (.glb)', w: 0.4, h: 0.4, url: '3D model address (.glb or .gltf)', keep: true, opts: ['spin'], f: 2048 },
   y: { name: 'YouTube video', sub: 'Plays a YouTube video, or just its sound', w: 0.52, h: 0.2925, url: 'YouTube link', keep: true, opts: ['play', 'audio', 'auto'] },
   v: { name: 'Video file', sub: 'An .mp4 or .webm video with its own web address', w: 0.52, h: 0.2925, url: 'Video file address (.mp4 or .webm), or a Google Drive share link', keep: true, opts: ['play', 'auto', 'loop'] },
   a: { name: 'Sound file', sub: 'An .mp3 or other sound, e.g. a spoken explanation', w: 0.46, h: 0.075, url: 'Sound file address (.mp3 etc.), or a Google Drive share link', keep: false, opts: ['auto'] },
   g: { name: 'Google Drive video', sub: 'A video shared from your Google Drive', w: 0.52, h: 0.2925, url: 'Google Drive share link', keep: true, opts: ['play', 'auto', 'loop'], f: 128 },
   o: { name: 'OneDrive video', sub: 'A video shared from OneDrive or school SharePoint', w: 0.52, h: 0.2925, url: 'OneDrive share link, or its embed code', keep: true, opts: ['play', 'auto', 'loop'], f: 128 },
 };
-const AUTO = 1, OPEN = 2, AUDIO = 4, LOOP = 64, FULL = 128, LOOK = 256 | 512, SOUND = 1024;
+const AUTO = 1, OPEN = 2, AUDIO = 4, LOOP = 64, FULL = 128, LOOK = 256 | 512, SOUND = 1024, STAND = 2048;   // STAND: 3D model stands up on the poster
 // Flags 8, 16 and 32 were used by the see-through video experiment (see FUTURE FEATURES). Links made
 // then still open; those flags and their extra settings are ignored.
 const OPTS = {
@@ -740,7 +792,10 @@ async function pack(sc) {
     const f = e.f ? [e.f] : [];
     if (e.t === 'y') return [...base, ytId(e.url), ...f];
     if (e.t === 'g') return [...base, driveId(e.url), ...f];
-    if (e.t === 'm' && e.o) return [...base, e.url || '', e.f || 0, e.o[0], e.o[1]];
+    if (e.t === 'm') {
+      const q = e.q && e.q.some(v => v) ? e.q : null;
+      if (e.o || q) return [...base, e.url || '', e.f || 0, ...(e.o || [0, 75]), ...(q || [])];
+    }
     return [...base, e.url || '', ...f];
   });
   const bytes = new TextEncoder().encode(JSON.stringify([CUT[layout] ? Math.max(3, layout) : LAYOUT_NOW, shapeIdx, arr]));
@@ -764,8 +819,8 @@ async function unpack(str) {
     else if (e.t === 't') { e.txt = rest[0] || ''; e.f = rest[1] | 0; }
     else if (e.t === 'y') { e.url = 'https://youtu.be/' + rest[0]; e.f = rest[1] | 0; }
     else if (e.t === 'g') { e.url = 'https://drive.google.com/file/d/' + rest[0] + '/view'; e.f = rest[1] | 0; }
-    else { e.url = rest[0]; e.f = rest[1] | 0; if (e.t === 'm' && rest.length >= 4) e.o = [+rest[2] || 0, +rest[3] || 75]; }
-    if (e.f) e.f &= (AUTO | OPEN | AUDIO | LOOP | FULL | LOOK | SOUND); // ignore settings from the see-through video experiment
+    else { e.url = rest[0]; e.f = rest[1] | 0; if (e.t === 'm' && rest.length >= 4) e.o = [+rest[2] || 0, +rest[3] || 75]; if (e.t === 'm' && rest.length >= 7) e.q = [+rest[4] || 0, +rest[5] || 0, +rest[6] || 0]; }
+    if (e.f) e.f &= (AUTO | OPEN | AUDIO | LOOP | FULL | LOOK | SOUND | STAND); // ignore settings from the see-through video experiment
     if (ver === 2) { // old single size -> box
       const s = e.s, n = (e.txt || '').length || 6;
       if (e.t === 'b') { e.h = s * 2; e.w = s * (n * 0.62 + 1.4); }
@@ -1002,26 +1057,35 @@ function makeEl(e, live) {
     if (!e.url) el = placeholder('Image: add its address');
     else { el = document.createElement('img'); el.src = e.url; el.alt = ''; }
   } else if (e.t === 'm') {
+    const stand = !!(e.f & STAND);
     if (!e.url) el = placeholder('3D model: add its address');
-    else {
-      // On the poster: the model as a picture that can turn slowly by itself. A tap opens it full-screen
-      // to turn and zoom with fingers (fiddly on a moving poster, and it would fight the tracking).
+    else if (stand && live) {
+      // Stands up on the poster: drawn in 3D over the camera picture (see 32-stand3d). Here: just its
+      // footprint, which can be tapped to explore the model full-screen.
+      el = document.createElement('div'); el.className = 'el-stand';
+      wrap.dataset.mid = scene.indexOf(e);
+    } else {
+      // In a box on the poster (or, in the editor, a stand-up model seen from straight above, as the
+      // camera sees it when the poster is face-on). A tap opens it full-screen to turn and zoom.
       el = document.createElement('model-viewer');
       // If the 3D viewer can't run here, or the model can't be loaded, say so on the item.
       const fail = msg => { if (live) showTrouble(wrap, msg, '3d', null, W, H); };
       ensureModelViewer().catch(() => fail("This browser couldn't start the 3D viewer. Updating the phone's software may help."));
       el.className = 'el-model';
       el.setAttribute('src', fileSrc(e.url));
-      el.setAttribute('camera-orbit', orbitOf(e));
+      el.setAttribute('orientation', orientOf(e));
+      el.setAttribute('camera-orbit', stand ? '0deg 0deg auto' : orbitOf(e));
       el.setAttribute('interaction-prompt', 'none');
       el.setAttribute('loading', 'eager');
       el.setAttribute('shadow-intensity', '0.8');
       el.setAttribute('environment-image', 'neutral');
       if (e.f & AUTO) { el.dataset.spin = '1'; if (!live) el.setAttribute('auto-rotate', ''); el.setAttribute('auto-rotate-delay', '0'); el.setAttribute('rotation-per-second', '20deg'); }
       el.addEventListener('error', () => { el.dataset.failed = '1'; whyFailed(fileSrc(e.url), '3D model').then(w => fail(w || "This 3D model couldn't be loaded.")); });
+    }
+    if (e.url) {
       const badge = document.createElement('div');
       badge.className = 'm-badge'; badge.style.fontSize = Math.max(10, Math.min(H * 0.07, W * 0.06)) + 'px';
-      badge.innerHTML = '<svg aria-hidden="true"><use href="#i-m"/></svg>' + (live ? 'Tap to explore' : '3D');
+      badge.innerHTML = '<svg aria-hidden="true"><use href="#i-m"/></svg>' + (live ? 'Tap to explore' : stand ? '3D · stands up' : '3D');
       after.push(() => wrap.appendChild(badge));
       if (live) { wrap.classList.add('tappable'); wrap.onclick = ev => { ev.stopPropagation(); openModelSheet(e); }; }
     }
@@ -1144,7 +1208,7 @@ function openModelSheet(e) {
   ensureModelViewer().then(() => {
     if (sh.hidden) return;
     const mv = document.createElement('model-viewer');
-    const set = { src: fileSrc(e.url), alt: '3D model', 'camera-orbit': orbitOf(e), 'camera-controls': '', 'touch-action': 'none',
+    const set = { src: fileSrc(e.url), alt: '3D model', orientation: orientOf(e), 'camera-orbit': orbitOf(e), 'camera-controls': '', 'touch-action': 'none',
       'interaction-prompt': 'auto', 'shadow-intensity': '1', 'environment-image': 'neutral', 'auto-rotate': '', 'auto-rotate-delay': '1500',
       'min-camera-orbit': 'auto auto 5%', 'max-camera-orbit': 'auto auto 300%' };
     for (const k in set) mv.setAttribute(k, set[k]);
@@ -1278,7 +1342,10 @@ const prettyName = n => n.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
    Shown with Google's <model-viewer> (free, open source): touch to turn, pinch to zoom, two fingers to
    move.
    It's big (about 1 MB), so it is only downloaded when a poster has a 3D model. */
-const MV_URL = "https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer.min.js";
+const MV_URL = "https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer-module.min.js";
+// (This version of <model-viewer> uses the page's copy of three.js, named in the import map in <head>,
+// which the standing 3D models use too: one download for both.)
+const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.min.js";
 let mvLoad = null;
 function ensureModelViewer() {
   if (customElements.get('model-viewer')) return Promise.resolve();
@@ -1286,11 +1353,13 @@ function ensureModelViewer() {
     const t = document.body.classList.contains('booting') ? boot.task(4) : null;   // counts on the loading screen
     // Download it once with a progress count (this also puts it in the browser's cache), then load it
     // the normal way (the most widely supported way of loading this kind of code).
-    const warm = !t ? Promise.resolve() : fetch(MV_URL).then(async r => {
+    let got = 0;
+    const pull = url => fetch(url).then(async r => {
       if (!r.ok || !r.body) return;
-      const reader = r.body.getReader(); let got = 0;
-      for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; t.progress(Math.min(0.9, got / 980000)); }
+      const reader = r.body.getReader();
+      for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; t.progress(Math.min(0.9, got / 1150000)); }
     }).catch(() => {});
+    const warm = !t ? Promise.resolve() : Promise.all([pull(MV_URL), pull(THREE_URL), pull(THREE_URL.replace('three.module.min.js', 'three.core.min.js'))]);
     mvLoad = warm.then(() => import(new URL(MV_URL, location.href).href)).then(() => customElements.whenDefined('model-viewer'))
       .then(() => { if (t) t.done(); }, err => { if (t) t.done(); mvLoad = null; mediaIssues.push({ t: Math.round(performance.now()), code: '3d-viewer', msg: String(err && err.message || err).slice(0, 80) }); throw err; });
   }
@@ -1301,6 +1370,8 @@ const rawGitHub = u => (u || '').replace(/^https:\/\/github\.com\/([^/]+)\/([^/]
 // The address to actually load a file from: a Google Drive share link becomes the file itself (through
 // the Drive API key, see DRIVE_API_KEY), a GitHub file page becomes the raw file; others stay as they are.
 const fileSrc = u => { const id = /drive\.google\.com|docs\.google\.com/i.test(u || '') ? driveId(u) : ''; return (id && driveDirect(id)) || rawGitHub(u); };
+// How the model itself is turned: [turn, tip forward, tip sideways] in degrees -> "roll pitch yaw".
+const orientOf = e => { const q = e.q || [0, 0, 0]; return `${q[2]}deg ${q[1]}deg ${q[0]}deg`; };
 const orbitOf = e => e.o ? `${e.o[0]}deg ${e.o[1]}deg auto` : '0deg 75deg auto';
 /* ---------- Editor ---------- */
 let saveTimer = null, pvZ = 1, pvTx = 0, pvTy = 0, zoomF = 1, sel = -1;
@@ -1345,6 +1416,7 @@ function renderPreview() {
   scene.forEach((e, i) => {
     const wrap = makeEl(e, false);
     wrap.dataset.i = i;
+    if (isStand(e)) wrap.dataset.stand = '1';
     if (i === sel) wrap.classList.add('sel');
     // Images: the first time an address is set, match the box to the picture's shape.
     const img = wrap.querySelector('img');
@@ -1368,8 +1440,10 @@ function renderPreview() {
     layer.appendChild(f);
   }
   applyZoom();
+  if (pv3d) refresh3dPreview();
 }
 function applyZoom() {
+  if (pv3d) { apply3d(); return; }
   const g = geo(), pv = $('#preview');
   const W = pv.clientWidth, H = pv.clientHeight;
   const fit = Math.min((W - 60) / (UNIT * (1 + 2 * g.M)), (H - 90) / (UNIT * (g.Hf + 2 * g.M)));
@@ -1385,6 +1459,7 @@ function applyZoom() {
 }
 
 function select(i, scroll) {
+  if (i >= 0 && pv3d) set3dPreview(false);   // editing happens in the flat view
   sel = i;
   renderPreview();
   renderList();
@@ -1457,6 +1532,7 @@ function startDrag(ev, wrap, e, i) {
 }
 // Empty part of the mat: deselect, or move the poster image in "Move image" mode.
 function stageDown(ev) {
+  if (pv3d) { orbit3d(ev); return; }
   if (posterMode && poster.img) {
     ev.preventDefault();
     const pv = $('#preview');
@@ -1545,9 +1621,17 @@ function renderInspector() {
         <p class="hint" style="margin:6px 0">Most reliable: open the video in OneDrive, choose <b>Embed</b> (or in Stream: <b>Share → Embed code</b>), copy the code and paste it here.</p>
         <p class="hint" style="margin:0">Or choose <b>Share</b>, set it to <b>Anyone with the link</b>, and copy the link. School accounts may not allow "Anyone" links; if so, ask your IT team or use the embed code.</p>
       </details>` : ''}
-    ${e.t === 'm' ? `<div class="field" data-viewbox ${e.url ? '' : 'hidden'}><span>Starting view</span>
+    ${e.t === 'm' ? `<div class="field"><span>On the poster</span>
+        <label class="toggle"><input type="radio" name="mshow" data-mshow="1" ${(e.f & STAND) ? 'checked' : ''}><span>Stands up on the poster in 3D: look from the side to see its side</span></label>
+        <label class="toggle"><input type="radio" name="mshow" data-mshow="0" ${(e.f & STAND) ? '' : 'checked'}><span>In a box, like a picture</span></label></div>
+      <div class="field" data-viewbox ${e.url ? '' : 'hidden'}><span>Position the model</span>
       <div class="m-pick"><model-viewer data-view camera-controls touch-action="none" interaction-prompt="none" shadow-intensity="0.8" environment-image="neutral"></model-viewer></div>
-      <div class="row" style="margin-top:6px"><button class="btn" type="button" data-act="view0">Reset</button><small class="hint" style="margin:0">Drag the model to choose how it first faces people. Scroll or pinch to check details (zoom isn't saved).</small></div></div>
+      ${['Turn', 'Tip forward or back', 'Tip sideways'].map((lab, k) => `<div class="m-rot"><span>${lab}</span>
+        <button class="btn" type="button" data-q="${k}" data-d="-90" aria-label="${lab} −90°">−90</button><button class="btn" type="button" data-q="${k}" data-d="-15" aria-label="${lab} −15°">−15</button>
+        <label class="deg"><input type="number" step="1" data-qv="${k}" aria-label="${lab} in degrees" value="${(e.q || [0, 0, 0])[k]}">°</label>
+        <button class="btn" type="button" data-q="${k}" data-d="15" aria-label="${lab} +15°">+15</button><button class="btn" type="button" data-q="${k}" data-d="90" aria-label="${lab} +90°">+90</button></div>`).join('')}
+      <div class="row" style="margin-top:6px"><button class="btn" type="button" data-act="q0">Straighten</button>${(e.f & STAND) ? '' : '<button class="btn" type="button" data-act="view0">Reset view</button>'}</div>
+      <small class="hint" style="margin:4px 0 0;display:block">${(e.f & STAND) ? 'Turn and tip the model until it stands the way you want; it always rests on the poster. Drag the picture above to look around it (that isn\'t saved). The box on the poster sets its size and place; use <b>3D preview</b> under the poster to see it from an angle.' : 'Turn and tip the model, then drag the picture above to choose how it first faces people (zoom isn\'t saved).'}</small></div>
       <details style="margin-bottom:10px"><summary>Getting a 3D model</summary>
         <p class="hint" style="margin:6px 0">Use a <b>.glb</b> file. Tinkercad: <b>Export → .GLTF (.glb)</b>. Other apps: export as glTF binary. An .stl or .obj file (3D printing) can be turned into .glb by importing it into Tinkercad and exporting again.</p>
         <p class="hint" style="margin:0">Put it in your site's <b>${MODEL_DIR}</b> folder on GitHub (then press ↻), or share it from Google Drive (<b>Anyone with the link</b>) and paste the link. Files on other sites only work if that site allows it; GitHub and Google Drive files do. Keep files under about 10 MB so they load quickly on phones.</p>
@@ -1627,16 +1711,32 @@ function renderInspector() {
   const view = box.querySelector('[data-view]');
   if (view) {
     ensureModelViewer().catch(() => {});
+    const standing = !!(e.f & STAND);
     if (e.url) view.setAttribute('src', fileSrc(e.url));
-    view.setAttribute('camera-orbit', orbitOf(e));
+    view.setAttribute('orientation', orientOf(e));
+    view.setAttribute('camera-orbit', standing ? '30deg 70deg auto' : orbitOf(e));
     let t = 0;
+    const later = () => { clearTimeout(t); t = setTimeout(() => { renderPreview(); changed(false); }, 300); };
+    // Turning the model: buttons in steps, or exact degrees.
+    const setQ = (k, v) => {
+      const q = (e.q || [0, 0, 0]).slice();
+      q[k] = ((Math.round(v) % 360) + 540) % 360 - 180; if (q[k] === -180) q[k] = 180;
+      e.q = q; view.setAttribute('orientation', orientOf(e));
+      const inp = box.querySelector(`[data-qv="${k}"]`); if (document.activeElement !== inp) inp.value = q[k];
+      later();
+    };
+    box.querySelectorAll('[data-q]').forEach(b => { b.onclick = () => setQ(+b.dataset.q, (e.q || [0, 0, 0])[+b.dataset.q] + +b.dataset.d); });
+    box.querySelectorAll('[data-qv]').forEach(inp => inp.addEventListener('input', () => { const v = parseFloat(inp.value); if (!isNaN(v)) setQ(+inp.dataset.qv, v); }));
+    box.querySelector('[data-act=q0]').onclick = () => { delete e.q; view.setAttribute('orientation', orientOf(e)); box.querySelectorAll('[data-qv]').forEach(i => { i.value = 0; }); later(); };
+    box.querySelectorAll('input[data-mshow]').forEach(rb => { rb.onchange = () => { e.f = +rb.dataset.mshow ? ((e.f || 0) | STAND) : ((e.f || 0) & ~STAND); changed(true); renderInspector(); }; });
     view.addEventListener('camera-change', ev => {
-      if (ev.detail.source !== 'user-interaction') return;
+      if (standing || ev.detail.source !== 'user-interaction') return;
       const o = view.getCameraOrbit(), d = r => Math.round(r * 180 / Math.PI);
       e.o = [((d(o.theta) % 360) + 360) % 360, Math.max(0, Math.min(180, d(o.phi)))];
       clearTimeout(t); t = setTimeout(() => { renderPreview(); changed(false); }, 400);
     });
-    box.querySelector('[data-act=view0]').onclick = () => { delete e.o; view.cameraOrbit = orbitOf(e); view.fieldOfView = 'auto'; view.jumpCameraToGoal(); renderPreview(); changed(false); };
+    const v0 = box.querySelector('[data-act=view0]');
+    if (v0) v0.onclick = () => { delete e.o; view.cameraOrbit = orbitOf(e); view.fieldOfView = 'auto'; view.jumpCameraToGoal(); renderPreview(); changed(false); };
   }
   box.querySelectorAll('input[data-look]').forEach(rb => {
     rb.onchange = () => { e.f = ((e.f || 0) & ~LOOK) | +rb.dataset.look; changed(true); };
@@ -1859,6 +1959,8 @@ function initEditor() {
   $('#zoomIn').onclick = () => { zoomF = Math.min(3, zoomF * 1.2); applyZoom(); };
   $('#zoomOut').onclick = () => { zoomF = Math.max(0.4, zoomF / 1.2); applyZoom(); };
   $('#zoomFit').onclick = () => { zoomF = 1; applyZoom(); };
+  $('#view3d').onclick = () => set3dPreview(!pv3d);
+  addEventListener('resize', () => { if (pv3d) apply3d(); });
   addEventListener('resize', () => { if (!$('#editor').hidden) applyZoom(); });
 
   const pal = $('#palette');
@@ -2054,14 +2156,17 @@ function buildLayer() {
   (scene || []).filter(e => !problem(e)).forEach(e => layer.appendChild(makeEl(e, true))); // skip unfinished items
   const yt = ytQueue.slice();
   setupYouTube();
+  layerStand = setupStandModels();
   browserAdvice(false);
   return yt;
 }
 // While the loading screen shows: wait for the poster's pictures, videos and players (each at most 8 s,
 // so a slow or blocked site can't hold everything up). Returns how many there were.
+let layerStand = null;
 function trackLayerMedia(yt) {
   const layer = $('#layer'), once = (n, evs) => new Promise(r => evs.forEach(ev => n.addEventListener(ev, r, { once: true })));
   let n = 0;
+  if (layerStand && Array.isArray(scene) && scene.some(isStand)) { n++; boot.wait(layerStand, 3, 20000); }
   layer.querySelectorAll('img').forEach(i => { if (!i.complete) { n++; boot.wait(once(i, ['load', 'error']), 1); } });
   layer.querySelectorAll('iframe').forEach(f => { n++; boot.wait(once(f, ['load', 'error']), 2); });
   layer.querySelectorAll('model-viewer').forEach(m => { n++; boot.wait(once(m, ['load', 'error']), 2, 15000); });
@@ -2117,6 +2222,256 @@ function browserAdvice(failed) {
 const frameModel = () => { const g = geo(); return [{ x: 0, y: 0 }, { x: UNIT, y: 0 }, { x: UNIT, y: UNIT * g.Hf }, { x: 0, y: UNIT * g.Hf }]; };
 const applyH = (h, x, y) => { const w = h[6] * x + h[7] * y + 1; return { x: (h[0] * x + h[1] * y + h[2]) / w, y: (h[3] * x + h[4] * y + h[5]) / w }; };
 
+/* ---------- 3D models standing on the poster ----------
+   A 3D model set to "stands up on the poster" is drawn in real 3D over the camera picture: from the
+   poster's four corners on screen (and a typical phone lens), the camera's position relative to the
+   poster is worked out, and the model is drawn as if it were standing on the paper. Looked at from the
+   side, it is seen from the side. The editor's "3D preview" uses the same drawing, with a pretend camera
+   that can be turned around the poster.
+   Poster coordinates: frame widths, x to the right, y down the poster, z into the paper (so "up out of
+   the paper" is -z). Uses three.js (shared with <model-viewer> through the page's import map). */
+let threeLoad = null;
+function ensureThree() {
+  if (!threeLoad) threeLoad = Promise.all([import('three'), import('three/addons/loaders/GLTFLoader.js'), import('three/addons/environments/RoomEnvironment.js')])
+    .then(([T, G, R]) => ({ T, GLTFLoader: G.GLTFLoader, RoomEnvironment: R.RoomEnvironment }))
+    .catch(err => { threeLoad = null; throw err; });
+  return threeLoad;
+}
+const isStand = e => e.t === 'm' && !!(e.f & STAND) && !!e.url;
+// A typical phone camera: the focal length is about 0.77 x the long side of the picture.
+const PHONE_F = 0.77;
+
+// Camera pose from a homography (poster units -> screen pixels): rotation rows and translation, in the
+// usual camera convention (x right, y down, z forward). f: focal length in screen pixels.
+function poseFromH(h, f, cx, cy) {
+  const a1 = [(h[0] - cx * h[6]) / f, (h[3] - cy * h[6]) / f, h[6]];
+  const a2 = [(h[1] - cx * h[7]) / f, (h[4] - cy * h[7]) / f, h[7]];
+  const a3 = [(h[2] - cx) / f, (h[5] - cy) / f, 1];
+  const n = v => Math.hypot(v[0], v[1], v[2]), l = 2 / (n(a1) + n(a2));
+  let r1 = a1.map(v => v * l), r2 = a2.map(v => v * l);
+  const t = a3.map(v => v * l);
+  const norm = v => { const k = n(v); return v.map(x => x / k); };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  // Make the axes exactly square to each other (measurements are never perfect).
+  r1 = norm(r1); const d = r1[0] * r2[0] + r1[1] * r2[1] + r1[2] * r2[2]; r2 = norm(r2.map((v, i) => v - d * r1[i]));
+  const r3 = cross(r1, r2);
+  return { R: [r1, r2, r3], t };   // columns of the rotation: r1, r2, r3 (poster x, y, z in camera space)
+}
+
+function makeStage(canvas) {
+  let L = null, renderer, scene, camera, root, sun, shade, env;
+  const items = new Map();   // element -> { stand, spin, e }
+  let wantRender = true, spinning = false, last = 0;
+  const st = {
+    ready: false, count: 0,
+    async init() {
+      if (L) return;
+      L = await ensureThree();
+      const T = L.T;
+      renderer = new T.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: true });
+      renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+      renderer.outputColorSpace = T.SRGBColorSpace;
+      renderer.toneMapping = T.NeutralToneMapping;
+      renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+      scene = new T.Scene();
+      const pm = new T.PMREMGenerator(renderer);
+      env = pm.fromScene(new L.RoomEnvironment(), 0.04).texture; scene.environment = env; pm.dispose();
+      camera = new T.PerspectiveCamera(50, 1, 0.01, 1000);
+      root = new T.Group(); root.matrixAutoUpdate = false; scene.add(root);
+      sun = new T.DirectionalLight(0xffffff, 1.6);
+      sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.002;
+      root.add(sun); root.add(sun.target);
+      shade = new T.Mesh(new T.PlaneGeometry(1, 1), new T.ShadowMaterial({ opacity: 0.3, side: T.DoubleSide }));
+      shade.receiveShadow = true; root.add(shade);
+      st.ready = true;
+    },
+    // Load the poster's standing models (again, when the poster or its items change).
+    async setItems(els) {
+      await st.init();
+      const T = L.T, g = geo();
+      // The paper that catches the shadows, and a light from above the poster's top-left.
+      shade.position.set(0.5, g.Hf / 2, -0.0005); shade.scale.set(1.4, g.Hf + 0.4, 1);
+      sun.position.set(0.1, -0.35, -1.6); sun.target.position.set(0.5, g.Hf / 2, 0);
+      const sc = sun.shadow.camera; sc.left = sc.bottom = -1.2; sc.right = sc.top = 1.2; sc.near = 0.1; sc.far = 4; sc.updateProjectionMatrix();
+      const keep = new Set(els);
+      for (const [e, it] of items) if (!keep.has(e) || it.url !== e.url) { root.remove(it.stand); items.delete(e); }
+      const jobs = els.filter(e => !items.has(e)).map(async e => {
+        const it = { e, url: e.url, stand: new T.Group(), spin: new T.Group(), fit: new T.Group(), turn: new T.Group() };
+        it.stand.matrixAutoUpdate = false;
+        it.stand.add(it.spin); it.spin.add(it.fit); it.fit.add(it.turn);
+        items.set(e, it); root.add(it.stand);
+        try {
+          const gl = await new L.GLTFLoader().loadAsync(fileSrc(e.url));
+          gl.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+          it.turn.add(gl.scene); it.model = gl.scene;
+          st.place(e);
+        } catch (err) { it.failed = true; mediaIssues.push({ t: Math.round(performance.now()), code: '3d-stand', msg: String(err && err.message || err).slice(0, 80) }); }
+      });
+      await Promise.all(jobs);
+      for (const e of els) st.place(e);   // turned or moved since
+      st.count = items.size; spinning = [...items.values()].some(it => it.e.f & AUTO);
+      wantRender = true;
+      return [...items.values()].filter(it => it.failed).map(it => it.e);
+    },
+    // Where a model sits: centred on its box, resting on the paper, turned as the author chose,
+    // and as big as the box allows (its footprint fits the box).
+    place(e) {
+      const it = items.get(e); if (!it || !it.model) return;
+      const T = L.T, q = (e.q || [0, 0, 0]).map(v => v * Math.PI / 180);
+      it.turn.rotation.set(q[1], q[0], q[2], 'YXZ');
+      it.fit.position.set(0, 0, 0); it.fit.scale.setScalar(1); it.fit.updateMatrixWorld(true);
+      const tmp = new T.Group(); tmp.add(it.fit); tmp.updateMatrixWorld(true);
+      const box = new T.Box3().setFromObject(it.turn), size = box.getSize(new T.Vector3()), mid = box.getCenter(new T.Vector3());
+      it.spin.add(it.fit);
+      const s = Math.min(e.w / Math.max(1e-6, size.x), e.h / Math.max(1e-6, size.z));
+      it.fit.scale.setScalar(s);
+      it.fit.position.set(-mid.x * s, -box.min.y * s, -mid.z * s);
+      // Model axes -> poster: model up (+Y) out of the paper (-z), model front (+Z) towards the
+      // poster's bottom edge (+y); turned on the paper with the item's own turn.
+      const r = (e.r || 0) * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r);
+      const B = new T.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
+      const Rz = new T.Matrix4().set(c, -sn, 0, 0, sn, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+      it.stand.matrix.copy(new T.Matrix4().makeTranslation(e.x + e.w / 2, e.y + e.h / 2, 0).multiply(Rz).multiply(B));
+      it.stand.matrixWorldNeedsUpdate = true;
+      wantRender = true;
+    },
+    // The camera, from rotation rows R (poster axes in camera space, as columns) and translation t,
+    // focal length f and the canvas size in CSS pixels.
+    setCamera(R, t, f, W, H) {
+      if (!st.ready) return;
+      const T = L.T;
+      if (canvas.width !== Math.round(W * renderer.getPixelRatio()) || canvas.height !== Math.round(H * renderer.getPixelRatio())) renderer.setSize(W, H, false);
+      camera.fov = 2 * Math.atan(H / 2 / f) * 180 / Math.PI; camera.aspect = W / H;
+      const near = Math.max(0.005, Math.abs(t[2]) * 0.05); camera.near = near; camera.far = Math.abs(t[2]) * 20 + 10;
+      camera.updateProjectionMatrix();
+      const [r1, r2, r3] = R;   // columns
+      // Camera convention (y down, z forward) -> three.js (y up, z backward): flip y and z.
+      root.matrix.set(r1[0], r2[0], r3[0], t[0], -r1[1], -r2[1], -r3[1], -t[1], -r1[2], -r2[2], -r3[2], -t[2], 0, 0, 0, 1);
+      root.matrixWorldNeedsUpdate = true;
+      wantRender = true;
+    },
+    // From the poster's corners on screen (frame corners, clockwise from top-left).
+    setCorners(pts, f, W, H) {
+      const g = geo(), h = homography([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: g.Hf }, { x: 0, y: g.Hf }], pts);
+      if (!h) return;
+      const p = poseFromH(h, f, W / 2, H / 2);
+      st.setCamera(p.R, p.t, f, W, H);
+    },
+    render(now) {
+      if (!st.ready || !items.size) return;
+      if (spinning) {
+        const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+        for (const it of items.values()) if (it.e.f & AUTO) it.spin.rotation.y += dt * 20 * Math.PI / 180;
+        wantRender = true;
+      }
+      last = now;
+      if (!wantRender) return;
+      wantRender = false;
+      renderer.render(scene, camera);
+    },
+    // For testing: draw the frame's outline in 3D (should sit exactly on the printed frame).
+    outline() {
+      const T = L.T, g = geo(), pts = [[0, 0], [1, 0], [1, g.Hf], [0, g.Hf], [0, 0]].map(([x, y]) => new T.Vector3(x, y, 0));
+      root.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: 0xff0000 })));
+      const post = new T.Mesh(new T.CylinderGeometry(0.01, 0.01, 0.3), new T.MeshBasicMaterial({ color: 0x00ff00 }));
+      post.rotation.x = Math.PI / 2; post.position.set(0.5, g.Hf / 2, -0.15); root.add(post);   // a stick standing up from the middle
+      wantRender = true;
+    },
+    clear() { for (const it of items.values()) root.remove(it.stand); items.clear(); st.count = 0; spinning = false; if (renderer) renderer.clear(); },
+    // Which standing model (if any) is at this screen point (CSS pixels relative to the canvas)?
+    hit(x, y, W, H) {
+      if (!st.ready || !items.size) return null;
+      const T = L.T, ray = new T.Raycaster();
+      ray.setFromCamera(new T.Vector2(x / W * 2 - 1, -(y / H) * 2 + 1), camera);
+      scene.updateMatrixWorld(true);
+      for (const it of items.values()) if (it.model && ray.intersectObject(it.model, true).length) return it.e;
+      return null;
+    }
+  };
+  return st;
+}
+
+// The viewer's stage: a see-through canvas over the camera picture.
+let viewStage = null;
+async function setupStandModels() {
+  const els = Array.isArray(scene) ? scene.filter(e => isStand(e) && !problem(e)) : [];
+  if (!els.length) { if (viewStage) viewStage.clear(); return; }
+  if (!viewStage) viewStage = makeStage($('#stand3d'));
+  try {
+    const failed = await viewStage.setItems(els);
+    failed.forEach(e => { const w = $('#layer').querySelector(`.ar-el[data-mid="${scene.indexOf(e)}"]`); if (w) whyFailed(fileSrc(e.url), '3D model').then(m => showTrouble(w, m || "This 3D model couldn't be loaded.", '3d', null, e.w * UNIT, e.h * UNIT)); });
+  } catch (err) {
+    mediaIssues.push({ t: Math.round(performance.now()), code: '3d-lib', msg: String(err && err.message || err).slice(0, 80) });
+    $('#layer').querySelectorAll('.ar-el[data-mid]').forEach(w => showTrouble(w, "This browser couldn't start the 3D view. Updating the phone's software may help.", '3d', null, w.offsetWidth, w.offsetHeight));
+  }
+}
+// Called with each new poster position (screen corners) and the camera picture's size.
+function standPose(pts, vw, vh) {
+  if (!viewStage || !viewStage.count) return;
+  const W = innerWidth, H = innerHeight, s = Math.max(W / vw, H / vh);
+  viewStage.setCorners(pts, PHONE_F * Math.max(vw, vh) * s, W, H);
+}
+
+/* ---------- The editor's 3D preview ----------
+   Shows the poster from an angle (as if lying on a table), with standing models in 3D. Drag to look
+   around, zoom with + and −. A pretend camera: its position gives the poster's corners on screen (for
+   the flat items, moved with the same kind of transform as in the viewer) and the 3D camera. */
+let pv3d = null, editorStage = null, pv3dRaf = 0;
+function set3dPreview(on) {
+  const pv = $('#preview'), b = $('#view3d');
+  if (on && !pv3d) {
+    if (typeof setPosterMode === 'function') setPosterMode(false);
+    if (sel >= 0) select(-1);
+    pv3d = { az: 20, el: 48 };
+    pv.classList.add('pv3d'); b.setAttribute('aria-pressed', 'true'); b.textContent = '2D';
+    if (!editorStage) editorStage = makeStage($('#pvStand'));
+    $('#pvStand').hidden = false;
+    $('#pv3dHint').hidden = false;
+    refresh3dPreview();
+    const loop = now => { if (!pv3d) return; editorStage.render(now); pv3dRaf = requestAnimationFrame(loop); };
+    pv3dRaf = requestAnimationFrame(loop);
+  } else if (!on && pv3d) {
+    pv3d = null; cancelAnimationFrame(pv3dRaf);
+    pv.classList.remove('pv3d'); b.setAttribute('aria-pressed', 'false'); b.textContent = '3D preview';
+    $('#pvStand').hidden = true; $('#pv3dHint').hidden = true;
+    applyZoom();
+  }
+}
+function refresh3dPreview() {
+  if (!pv3d) return;
+  editorStage.setItems(scene.filter(e => isStand(e) && !problem(e))).then(() => apply3d()).catch(() => { $('#pv3dHint').textContent = "The 3D preview couldn't start in this browser."; });
+  apply3d();
+}
+function apply3d() {
+  if (!pv3d) return;
+  const g = geo(), pv = $('#preview'), W = pv.clientWidth, H = pv.clientHeight;
+  const f = 0.9 * Math.max(W, H), az = pv3d.az * Math.PI / 180, el = Math.min(89.9, pv3d.el) * Math.PI / 180;
+  const C = [0.5, g.Hf / 2, 0];
+  const span = Math.max((1 + 2 * g.M) * f / (0.8 * W), (g.Hf + 2 * g.M) * f / (0.75 * H));
+  const d = span / zoomF;
+  // Camera on a sphere around the poster's middle; "up" is out of the paper (-z).
+  const P = [C[0] + d * Math.cos(el) * Math.sin(az), C[1] + d * Math.cos(el) * Math.cos(az), C[2] - d * Math.sin(el)];
+  const sub = (a, b) => a.map((v, i) => v - b[i]), nrm = v => { const k = Math.hypot(...v); return v.map(x => x / k); };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const fwd = nrm(sub(C, P)), right = nrm(cross(fwd, [0, 0, -1])), down = cross(fwd, right);
+  const Rrows = [right, down, fwd], t = Rrows.map(r => -(r[0] * P[0] + r[1] * P[1] + r[2] * P[2]));
+  const proj = (x, y) => { const c = Rrows.map((r, i) => r[0] * x + r[1] * y + t[i]); return { x: f * c[0] / c[2] + W / 2, y: f * c[1] / c[2] + H / 2 }; };
+  const corners = [proj(0, 0), proj(1, 0), proj(1, g.Hf), proj(0, g.Hf)];
+  const h = homography(frameModel(), corners);
+  if (h) $('#pvLayer').style.transform = toCss(h);
+  // Columns of the rotation (poster axes seen from the camera) for the 3D drawing.
+  const R = [[right[0], down[0], fwd[0]], [right[1], down[1], fwd[1]], [right[2], down[2], fwd[2]]];
+  editorStage.setCamera(R, t, f, W, H);
+}
+// Dragging on the preview in 3D mode looks around the poster.
+function orbit3d(ev) {
+  ev.preventDefault();
+  const pv = $('#preview'); pv.setPointerCapture(ev.pointerId);
+  let x = ev.clientX, y = ev.clientY;
+  const move = m => { pv3d.az -= (m.clientX - x) * 0.4; pv3d.el = Math.max(8, Math.min(89.9, pv3d.el + (m.clientY - y) * 0.3)); x = m.clientX; y = m.clientY; apply3d(); };
+  const up = () => { pv.removeEventListener('pointermove', move); pv.removeEventListener('pointerup', up); pv.removeEventListener('pointercancel', up); };
+  pv.addEventListener('pointermove', move); pv.addEventListener('pointerup', up); pv.addEventListener('pointercancel', up);
+}
 /* ---------- Finding the poster's black frame ----------
    Works on a small copy of the camera picture. Finds dark blobs, takes the outline
    (convex hull) of each, and looks for the frame's shape: four long straight sides
@@ -3236,6 +3591,7 @@ function featStudy(ref, W, Ht, u0, v0, g, ms0, size) {
 // later from a closer view (more detail).
 function featMaybeLearn(video, pts, isEdges) {
   if (feat.scene !== scene) { featReset(); feat.scene = scene; }
+  if (pc.other) return;   // looking at a different poster: don't learn its picture as this one's
   if (!isEdges) { feat.steady = 0; return; }
   const size = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
   feat.steady++;
@@ -3405,7 +3761,96 @@ function decodeWorker(img) {
 async function detectOnce(video) {
   const r = await detectOnce2(video);
   if (rec.on) rec.note(r);
+  // Following a poster: now and then, read its QR code in the background to check it's still the
+  // same poster (every poster has the same black frame).
+  if (r && r.pts && r.src !== 'QR') { const now = performance.now(); verifyPoster(r.pts, now); checkPosterQR(video, r.pts, now); }
   return r;
+}
+/* ---------- Moving on to another poster ----------
+   All posters share the same black frame, so the frame alone can't tell them apart: the QR code can.
+   While following a poster, its QR code is read about once a second (just that small area, in the
+   background). If it holds a different scene, that scene is loaded straight away, in the same tab with
+   the camera still running, so people can walk from poster to poster.
+   From further away the QR code is too small to read, but the poster's picture still tells: the spots
+   learned from this poster's picture (47-features) should be where the frame says they are. If most of
+   them are missing three times running, it's another poster: its overlays are hidden and people are asked to
+   move closer to its QR code. */
+const pc = { t: 0, bad: 0, other: false };
+function verifyPoster(pts, now) {
+  const M = feat.model;
+  if (!M || feat.scene !== scene || feat.busy || switching) return;
+  if (now - pc.t < (pc.other ? 400 : 700)) return;
+  pc.t = now;
+  const H = homography(fPoints(M.g), pts); if (!H) return;
+  // The coarse (blurred) versions of the spots: still recognisable when the picture is blurry.
+  const mt = featMatch(snapCanvas, H, M.coarse, true, 1);
+  if (mt.tried < 10) return;                                   // too little of it in view to tell
+  const ratio = mt.length / mt.tried;
+  if (rec.on && rec.d) rec.d.same = Math.round(ratio * 100) / 100;
+  if (ratio < 0.2) { if (++pc.bad >= 3 && !pc.other) setOtherPoster(true); }
+  else if (ratio > 0.4) { pc.bad = 0; if (pc.other) setOtherPoster(false); }
+}
+function setOtherPoster(on) {
+  pc.other = on; pc.bad = 0;
+  if (on) { $('#layer').style.visibility = 'hidden'; $('#stand3d').style.visibility = 'hidden'; }
+  const n = $('#hudNote');
+  if (on) { clearTimeout(showNote.timer); n.textContent = 'This looks like a different poster. Move closer to its QR code to open it.'; n.hidden = false; }
+  else n.hidden = true;
+}
+let qrCheckT = 0, switching = false, ownLinks = {};
+const qcv = document.createElement('canvas'), qctx = qcv.getContext('2d', { willReadFrequently: true });
+function checkPosterQR(cam, pts, now) {
+  if (!worker || qrJob || switching || now - qrCheckT < (pc.other ? 400 : 1000) || !Array.isArray(scene)) return;
+  const b = qrBoxFromFrame(pts);
+  if (!b || Math.max(b.w, b.h) < 28) return;                   // too small to read from here
+  qrCheckT = now;
+  // The QR's area (and a margin), from the camera picture at its full size.
+  const k = snapCanvas.k || 1, m = Math.max(b.w, b.h) * 0.3, vw = cam.videoWidth, vh = cam.videoHeight;
+  const x0 = Math.max(0, (b.x - m) / k), y0 = Math.max(0, (b.y - m) / k);
+  const x1 = Math.min(vw, (b.x + b.w + m) / k), y1 = Math.min(vh, (b.y + b.h + m) / k);
+  if (x1 - x0 < 24 || y1 - y0 < 24) return;
+  const sc = Math.min(1, 520 / Math.max(x1 - x0, y1 - y0)), w = Math.round((x1 - x0) * sc), h = Math.round((y1 - y0) * sc);
+  if (qcv.width !== w || qcv.height !== h) { qcv.width = w; qcv.height = h; }
+  try { qctx.drawImage(cam, x0, y0, x1 - x0, y1 - y0, 0, 0, w, h); } catch (e) { return; }
+  const job = decodeWorker(qctx.getImageData(0, 0, w, h));
+  qrJob = job.then(res => { if (qrJob === job2) qrJob = null; if (res && res.data) posterQR(res.data); });
+  const job2 = qrJob;
+}
+// A QR code was read while a poster's scene is showing.
+function posterQR(data) {
+  const m = String(data).match(/#[de]=([\w-]+)/);
+  if (m) { if (m[1] !== packed) switchPoster(m[1]); else if (pc.other) { setOtherPoster(false); featReset(); feat.scene = scene; } return; }
+  // A poster made with "My own link" (e.g. a Google Slide): its scene can't be read from here. The first
+  // such link seen is taken to be this poster's own; a different one means another poster: offer it.
+  if (!/^https?:\/\//i.test(data)) return;
+  if (!ownLinks[packed]) { ownLinks[packed] = data; return; }
+  if (ownLinks[packed] !== data) offerPoster(data);
+}
+async function switchPoster(d) {
+  switching = true;
+  try {
+    const u = await unpack(d);
+    shapeIdx = u.shape; layout = u.layout; scene = u.els; packed = d;
+    history.replaceState(null, '', location.pathname + location.search + '#d=' + d);   // (no reload)
+    resetTracking(); lastSeen = 0; adviceShown = false; setOtherPoster(false);
+    $('#layer').style.visibility = 'hidden'; $('#stand3d').style.visibility = 'hidden';
+    buildLayer();
+    showNote('New poster found');
+  } catch (e) { showNote("Found another poster, but couldn't read its link."); }
+  switching = false;
+}
+let offered = '';
+function offerPoster(url) {
+  if (offered === url) return;
+  offered = url;
+  let d = $('#posterOffer');
+  if (!d) {
+    d = document.createElement('div'); d.id = 'posterOffer'; d.setAttribute('role', 'status');
+    d.innerHTML = '<p>This looks like a different poster.</p><div><a class="go">Open it</a><button type="button">Not now</button></div>';
+    d.querySelector('button').onclick = () => { d.hidden = true; };
+    $('#viewer').appendChild(d);
+  }
+  d.querySelector('a').href = url; d.hidden = false;
 }
 /* Motion prediction: phones move smoothly, so where the poster was in the last two pictures says
    where it will be in this one, to within a few pixels. Then only a few pixels either side of the
@@ -3570,7 +4015,8 @@ function onDetect(r, now) {
     unpack(data).then(u => { shapeIdx = u.shape; layout = u.layout; scene = u.els; packed = data; buildLayer(); })
       .catch(() => { scene = null; setStatus("Found a scene link, but couldn't read it."); });
   }
-  if (!r.pts) return;
+  if (Array.isArray(scene) && r.data) posterQR(r.data);
+  if (!r.pts || switching) return;
   const pts = r.pts.map(p => videoToScreen(p, r.vw, r.vh));
   if (pose && (now - lastSeen > 500 || Math.hypot(pts[0].x - pose[0].x, pts[0].y - pose[0].y) > 250)) filters.forEach(f => f.reset());
   // Switching between frame and QR can shift things slightly: let the filter blend it.
@@ -3579,7 +4025,8 @@ function onDetect(r, now) {
   if (h) {
     const layer = $('#layer');
     layer.style.transform = toCss(h);
-    layer.style.visibility = 'visible';
+    layer.style.visibility = pc.other ? 'hidden' : 'visible';
+    if (viewStage && viewStage.count) { $('#stand3d').style.visibility = pc.other ? 'hidden' : 'visible'; standPose(pose, r.vw, r.vh); }
   }
   lastSeen = now;
   lastSource = r.src;
@@ -3612,6 +4059,9 @@ function tick() {
   if (now - rateT >= 1000) { rate = Math.round(detCount * 1000 / (now - rateT || 1)); detCount = 0; rateT = now; }
   const layer = $('#layer');
   showGuide(!held && (!lastSeen || now - lastSeen > 700), now);
+  // Standing 3D models: redrawn while the poster is in view (dimmed with the rest when it's lost).
+  if (viewStage && viewStage.count && layer.style.visibility === 'visible' && !layer.classList.contains('lost')) viewStage.render(now);
+  $('#stand3d').classList.toggle('lost', layer.classList.contains('lost'));
   if (now < noteUntil) setStatus(note);
   else if (held) setStatus('Holding position — tap Resume to track again.');
   else if (!lastSeen) setStatus(Array.isArray(scene) ? 'Looking for the poster…' : 'Point at the QR code on a poster.');
@@ -3622,7 +4072,16 @@ function tick() {
 
 let lastStatus = '';
 let note = '', noteUntil = 0;
-function showNote(t) { note = t; noteUntil = performance.now() + 2500; setStatus(t); }
+function showNote(t) {
+  note = t; noteUntil = performance.now() + 2500; setStatus(t);
+  const n = $('#hudNote'); n.textContent = t; n.hidden = false;
+  clearTimeout(showNote.timer); showNote.timer = setTimeout(() => { n.hidden = true; }, 2500);
+}
+// The "stats" button: shows or hides the tracking details (remembered on this phone).
+function showStats(on) {
+  $('#statsPanel').hidden = !on; $('#statsBtn').setAttribute('aria-expanded', on);
+  try { localStorage.setItem('arStats', on ? '1' : ''); } catch (e) {}
+}
 function watchEnded(st) {
   st.getVideoTracks().forEach(t => t.onended = () => {
     if (stream === st && running) { stopCamera(); $('#startPanel').hidden = false; $('#startMsg').textContent = 'The camera was taken by another app. Tap Start camera to try again.'; }
@@ -3855,7 +4314,7 @@ function stopCamera() {
 }
 
 /* ---------- Test recorder (for diagnosing tracking on a real phone) ----------
-   Hidden unless the page address has ?test (before the #), or the status text is tapped 3 times.
+   Hidden unless the page address has ?test (before the #), or the status text (under "stats") is tapped 3 times.
    Records ~30 s: a few camera pictures per second plus a line for every detection attempt, then
    downloads one .json file that can be sent to whoever is improving the tracking. */
 const rec = {
@@ -3929,13 +4388,22 @@ const rec = {
 };
 
 function initViewer() {
-  if (/[?&]test\b/.test(location.search)) $('#recBtn').hidden = false;
+  if (/[?&]test\b/.test(location.search)) { $('#recBtn').hidden = false; showStats(true); }
   let taps = 0, tapT = 0;
   $('#status').addEventListener('click', () => {
     const now = performance.now(); taps = now - tapT < 600 ? taps + 1 : 1; tapT = now;
     if (taps >= 3) { $('#recBtn').hidden = false; taps = 0; }
   });
   $('#recBtn').onclick = () => rec.on ? rec.stop() : rec.start();
+  $('#statsBtn').onclick = () => showStats($('#statsPanel').hidden);
+  // Tapping a standing 3D model (drawn over the camera picture) opens it full-screen.
+  $('#viewer').addEventListener('click', ev => {
+    if (!viewStage || !viewStage.count || ev.target.closest('button, a, #hud, #statsPanel, #startPanel, .ar-el, #modelSheet, #mediaSheet')) return;
+    const e = viewStage.hit(ev.clientX, ev.clientY, innerWidth, innerHeight);
+    if (e) openModelSheet(e);
+  });
+  $('#statsHide').onclick = () => showStats(false);
+  try { if (localStorage.getItem('arStats')) showStats(true); } catch (e) {}
   $('#startBtn').onclick = () => { unlockMedia(); startCamera(); };
   $('#camBtn').onclick = () => cycleCamera(true);
   $('#otherCamBtn').onclick = () => cycleCamera(false);
@@ -3967,12 +4435,12 @@ async function route() {
       catch (e) { $('#startMsg').textContent = "This scene link couldn't be read. " + (e.message.includes('version') ? e.message : 'It may be incomplete.'); }
     }
     held = false; $('#holdBtn').textContent = 'Hold';
-    $('#layer').style.visibility = 'hidden';
+    $('#layer').style.visibility = 'hidden'; $('#stand3d').style.visibility = 'hidden';
     $('#startPanel').hidden = false;
     const yt = buildLayer();
     // The poster's videos and pictures: wait for them behind the loading screen (shown again when
     // arriving from the editor).
-    const hasMedia = $('#layer').querySelector('img,iframe,video,audio,model-viewer') || yt.length;
+    const hasMedia = $('#layer').querySelector('img,iframe,video,audio,model-viewer') || (Array.isArray(scene) && scene.some(isStand)) || yt.length;
     if (hasMedia && !document.body.classList.contains('booting')) { boot.show('Loading the poster…'); trackLayerMedia(yt); boot.end(); }
     else if (hasMedia) trackLayerMedia(yt);
   } else {
